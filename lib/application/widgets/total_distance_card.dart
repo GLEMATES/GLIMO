@@ -14,6 +14,142 @@ class TotalDistanceCard extends ConsumerStatefulWidget {
 }
 
 class _TotalDistanceCardState extends ConsumerState<TotalDistanceCard> {
+  final TextEditingController _odometerController = TextEditingController();
+
+  @override
+  void dispose() {
+    _odometerController.dispose();
+    super.dispose();
+  }
+
+  void _showEditOdometerDialog(Motor activeMotor) {
+    _odometerController.text = activeMotor.odometer;
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.l),
+        ),
+        title: Text(
+          'Sesuaikan Odometer',
+          style: AppTypography.titleLarge.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Masukkan nilai odometer yang tertera di motor Anda untuk sinkronisasi.',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.neutral600,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.m),
+            TextField(
+              controller: _odometerController,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Odometer (km)',
+                hintText: 'Misal: 11722',
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppSpacing.m),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AppSpacing.m),
+                  borderSide: const BorderSide(color: AppColors.normalActive, width: 2),
+                ),
+                suffixText: 'km',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Batal',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.neutral600,
+              ),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newOdometer = _odometerController.text.trim();
+              final navigator = Navigator.of(context);
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
+
+              if (newOdometer.isEmpty) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Odometer tidak boleh kosong',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.neutral0,
+                      ),
+                    ),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+                return;
+              }
+
+              try {
+                await ref.read(motorListProvider.notifier).updateMotor(
+                  activeMotor.id,
+                  activeMotor.model,
+                  activeMotor.type,
+                  newOdometer,
+                );
+
+                navigator.pop();
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Odometer berhasil diperbarui',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.neutral0,
+                      ),
+                    ),
+                    backgroundColor: AppColors.normalHover,
+                  ),
+                );
+              } catch (e) {
+                scaffoldMessenger.showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Gagal memperbarui odometer: $e',
+                      style: AppTypography.bodyMedium.copyWith(
+                        color: AppColors.neutral0,
+                      ),
+                    ),
+                    backgroundColor: AppColors.error,
+                  ),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.normalActive,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSpacing.m),
+              ),
+            ),
+            child: Text(
+              'Simpan',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.neutral0,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     ref.watch(motorListProvider);
@@ -55,72 +191,97 @@ class _TotalDistanceCardState extends ConsumerState<TotalDistanceCard> {
       ),
       child: Column(
         children: [
-          Container(
-            height: 160,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Color(0xFF530000),
-                  Color(0xFF860000),
-                  Color(0xFFE40000),
-                ],
-                stops: [0.0, 0.5, 1.0],
+          GestureDetector(
+            onTap: activeMotor != null ? () => _showEditOdometerDialog(activeMotor) : null,
+            child: Container(
+              height: 160,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xFF530000),
+                    Color(0xFF860000),
+                    Color(0xFFE40000),
+                  ],
+                  stops: [0.0, 0.5, 1.0],
+                ),
+                borderRadius: BorderRadius.circular(AppSpacing.xl),
               ),
-              borderRadius: BorderRadius.circular(AppSpacing.xl),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.l),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Stack(
                 children: [
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Total Jarak Tempuh',
-                        style: AppTypography.bodyLarge.copyWith(
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.l),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Total Jarak Tempuh',
+                              style: AppTypography.bodyLarge.copyWith(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w500,
+                                fontSize: 18,
+                              ),
+                            ),
+                            const SizedBox(height: AppSpacing.xs),
+                            Align(
+                              alignment: Alignment.centerRight,
+                              child: Text(
+                                '$totalDistance km',
+                                style: AppTypography.headlineMedium.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 38,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const Spacer(),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              startDate,
+                              style: AppTypography.bodyLarge.copyWith(
+                                color: Colors.white.withValues(alpha: 0.9),
+                                fontSize: 16,
+                              ),
+                            ),
+                            Text(
+                              endDate,
+                              style: AppTypography.bodyLarge.copyWith(
+                                color: Colors.white.withValues(alpha: 0.9),
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Edit icon hint
+                  if (activeMotor != null)
+                    Positioned(
+                      top: AppSpacing.m,
+                      right: AppSpacing.m,
+                      child: Container(
+                        padding: const EdgeInsets.all(AppSpacing.xs),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.2),
+                          borderRadius: BorderRadius.circular(AppSpacing.s),
+                        ),
+                        child: const Icon(
+                          Icons.edit,
                           color: Colors.white,
-                          fontWeight: FontWeight.w500,
-                          fontSize: 18,
+                          size: 16,
                         ),
                       ),
-                      const SizedBox(height: AppSpacing.xs),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: Text(
-                          '$totalDistance km',
-                          style: AppTypography.headlineMedium.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 38,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const Spacer(),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        startDate,
-                        style: AppTypography.bodyLarge.copyWith(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text(
-                        endDate,
-                        style: AppTypography.bodyLarge.copyWith(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          fontSize: 16,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
                 ],
               ),
             ),
