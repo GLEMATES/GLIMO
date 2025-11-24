@@ -1,0 +1,48 @@
+{
+  "project_info": {
+    "project_number": "279294323481",
+    "project_id": "glimo-2eff0",
+    "storage_bucket": "glimo-2eff0.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:279294323481:android:81eff7de7699e087303388",
+        "android_client_info": {
+          "package_name": "com.glemates.glemo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDn08LFcsBjUUfMkcvlj4ha8RnNe9jhMyM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    },
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:279294323481:android:f6179cad0569c6c1303388",
+        "android_client_info": {
+          "package_name": "com.glemates.glimo"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDn08LFcsBjUUfMkcvlj4ha8RnNe9jhMyM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
