@@ -2,56 +2,60 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../domain/models/notification_model.dart';
 import '../../infrastructure/repositories/notification_repository.dart';
 
-/// Repository provider
 final notificationRepositoryProvider = Provider<NotificationRepository>((ref) {
   return NotificationRepository();
 });
 
-/// Provider for all notifications (sorted by timestamp, newest first)
-final allNotificationsProvider = StreamProvider<List<NotificationModel>>((ref) async* {
+final allNotificationsProvider = StreamProvider<List<NotificationModel>>((ref) {
   final repository = ref.watch(notificationRepositoryProvider);
-
-  // Initial load
-  yield await repository.getAllNotifications();
-
-  // Poll for updates every 5 seconds
-  // (In production, consider using a better reactive solution)
-  await Future.delayed(const Duration(seconds: 5));
-
-  while (true) {
-    yield await repository.getAllNotifications();
-    await Future.delayed(const Duration(seconds: 5));
-  }
+  return repository.getNotificationsStream();
 });
 
-/// Provider for service notifications only
-final serviceNotificationsProvider = FutureProvider<List<NotificationModel>>((ref) async {
-  final repository = ref.watch(notificationRepositoryProvider);
-  return repository.getNotificationsByCategory('service');
+final serviceNotificationsProvider = Provider<List<NotificationModel>>((ref) {
+  final allNotifications = ref.watch(allNotificationsProvider);
+  return allNotifications.when(
+    data: (notifications) => notifications.where((n) => n.category == 'service').toList(),
+    loading: () => [],
+    error: (_, __) => [],
+  );
 });
 
-/// Provider for general notifications only
-final generalNotificationsProvider = FutureProvider<List<NotificationModel>>((ref) async {
-  final repository = ref.watch(notificationRepositoryProvider);
-  return repository.getNotificationsByCategory('general');
+final generalNotificationsProvider = Provider<List<NotificationModel>>((ref) {
+  final allNotifications = ref.watch(allNotificationsProvider);
+  return allNotifications.when(
+    data: (notifications) => notifications.where((n) => n.category == 'general').toList(),
+    loading: () => [],
+    error: (_, __) => [],
+  );
 });
 
-/// Provider for total unread count (for badge on notification icon)
-final totalUnreadCountProvider = FutureProvider<int>((ref) async {
-  final repository = ref.watch(notificationRepositoryProvider);
-  return repository.getTotalUnreadCount();
+final totalUnreadCountProvider = Provider<int>((ref) {
+  final allNotifications = ref.watch(allNotificationsProvider);
+  return allNotifications.when(
+    data: (notifications) => notifications.where((n) => !n.isRead).length,
+    loading: () => 0,
+    error: (_, __) => 0,
+  );
 });
 
-/// Provider for service category unread count
-final serviceUnreadCountProvider = FutureProvider<int>((ref) async {
-  final repository = ref.watch(notificationRepositoryProvider);
-  return repository.getUnreadCount('service');
+final serviceUnreadCountProvider = Provider<int>((ref) {
+  final allNotifications = ref.watch(allNotificationsProvider);
+  return allNotifications.when(
+    data: (notifications) =>
+        notifications.where((n) => n.category == 'service' && !n.isRead).length,
+    loading: () => 0,
+    error: (_, __) => 0,
+  );
 });
 
-/// Provider for general category unread count
-final generalUnreadCountProvider = FutureProvider<int>((ref) async {
-  final repository = ref.watch(notificationRepositoryProvider);
-  return repository.getUnreadCount('general');
+final generalUnreadCountProvider = Provider<int>((ref) {
+  final allNotifications = ref.watch(allNotificationsProvider);
+  return allNotifications.when(
+    data: (notifications) =>
+        notifications.where((n) => n.category == 'general' && !n.isRead).length,
+    loading: () => 0,
+    error: (_, __) => 0,
+  );
 });
 
 class NotificationNotifier {

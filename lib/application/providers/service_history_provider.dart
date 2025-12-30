@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'dart:async';
+import 'motor_list_provider.dart';
 
 /// Model untuk satu record riwayat servis
 class ServiceHistory {
@@ -347,109 +348,6 @@ class ServiceHistoryNotifier extends Notifier<List<ServiceHistory>> {
     }
   }
 
-  /// Auto-generate past service histories berdasarkan odometer saat motor ditambahkan
-  /// Ini akan men-detect KPB mana yang sudah terlewati dan auto-create service history
-  Future<void> autoGeneratePastServices({
-    required String motorId,
-    required String motorName,
-    required int currentOdometer,
-    required DateTime motorPurchaseDate,
-    required Map<String, dynamic> serviceSchedule, // Service schedule dari Firestore
-  }) async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user == null) {
-        return;
-      }
-
-      // Parse service items dari schedule
-      final servicesList = (serviceSchedule['services'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-
-      // List untuk batch write
-      WriteBatch batch = _firestore.batch();
-      int batchCount = 0;
-      final now = DateTime.now();
-      int idCounter = 0; // Counter untuk unique ID
-
-      for (var serviceData in servicesList) {
-        final component = serviceData['component'] as String? ?? '';
-        if (component.isEmpty) continue;
-
-        final scheduleMap = serviceData['schedule'] as Map<String, dynamic>? ?? {};
-
-        // Sort milestones by KM
-        final milestones = <MapEntry<String, Map<String, dynamic>>>[];
-        scheduleMap.forEach((key, value) {
-          if (value is Map<String, dynamic>) {
-            milestones.add(MapEntry(key, value));
-          }
-        });
-
-        // Sort by KM ascending
-        milestones.sort((a, b) {
-          final kmA = a.value['km'] as int? ?? 0;
-          final kmB = b.value['km'] as int? ?? 0;
-          return kmA.compareTo(kmB);
-        });
-
-        // Check which milestones have been passed
-        for (var milestone in milestones) {
-          final kmMilestone = milestone.value['km'] as int? ?? 0;
-          final action = milestone.value['action'] as String? ?? 'Periksa';
-
-          // Jika odometer saat ini > milestone km, berarti KPB ini sudah lewat
-          if (currentOdometer > kmMilestone) {
-            // Estimate tanggal service - set ke beberapa hari yang lalu
-            // Semakin jauh milestonenya, semakin lama tanggalnya
-            // Misal: KPB 1 (1000 km) = 60 hari lalu, KPB 2 (4000) = 30 hari lalu, KPB 3 (8000) = 7 hari lalu
-            final daysAgo = ((currentOdometer - kmMilestone) / 100).floor().clamp(1, 90);
-            final estimatedServiceDate = now.subtract(Duration(days: daysAgo));
-
-            // Generate unique ID dengan counter
-            idCounter++;
-            final id = '${now.millisecondsSinceEpoch}_$idCounter';
-
-            final docRef = _firestore
-                .collection('users')
-                .doc(user.uid)
-                .collection('service_history')
-                .doc(id);
-
-            batch.set(docRef, {
-              'motorId': motorId,
-              'motorName': motorName,
-              'serviceName': component,
-              'serviceType': action,
-              'odometer': kmMilestone,
-              'date': Timestamp.fromDate(estimatedServiceDate),
-            });
-
-            batchCount++;
-
-            // Firestore batch limit is 500 operations
-            if (batchCount >= 400) {
-              await batch.commit();
-              // Create NEW batch after commit
-              batch = _firestore.batch();
-              batchCount = 0;
-            }
-          }
-        }
-      }
-
-      // Commit remaining batch
-      if (batchCount > 0) {
-        await batch.commit();
-      }
-
-      // Auto-generate completed successfully
-    } catch (e) {
-      // Error auto-generating past services, non-critical
-      // User can still use the app normally
-      // Error details: $e
-    }
-  }
-
   /// Clear all service history (untuk logout - optional, tidak dipanggil saat logout normal)
   Future<void> clearHistory() async {
     try {
@@ -499,10 +397,77 @@ final serviceHistoryByMotorProvider = Provider.family<List<ServiceHistory>, Stri
   return ref.read(serviceHistoryProvider.notifier).getHistoryByMotor(motorId);
 });
 
-/// Accessor untuk get grouped services by component
+/// Accessor untuk get grouped services by component (ALL motors)
 final groupedServicesByComponentProvider = Provider<List<ComponentServiceGroup>>((ref) {
   ref.watch(serviceHistoryProvider);
   return ref.read(serviceHistoryProvider.notifier).getGroupedByComponent();
+});
+
+/// Accessor untuk get grouped services by component (ACTIVE motor only)
+final groupedServicesByComponentForActiveMotorProvider = Provider<List<ComponentServiceGroup>>((ref) {
+  final allHistory = ref.watch(serviceHistoryProvider);
+  final motors = ref.watch(motorListProvider);
+  final activeMotor = motors.where((m) => m.isActive).firstOrNull;
+
+  if (activeMotor == null) {
+    return [];
+  }
+
+  final motorHistory = allHistory.where((h) => h.motorId == activeMotor.id).toList();
+
+  final componentNames = <String>{};
+  for (var history in motorHistory) {
+    componentNames.add(history.serviceName);
+  }
+
+  final groups = <ComponentServiceGroup>[];
+  for (var componentName in componentNames) {
+    final componentHistory = motorHistory
+        .where((h) => h.serviceName == componentName)
+        .toList()
+      ..sort((a, b) => b.date.compareTo(a.date));
+
+    if (componentHistory.isEmpty) continue;
+
+    ServiceHistory? lastGanti;
+    ServiceHistory? lastPeriksa;
+    int totalGanti = 0;
+    int totalPeriksa = 0;
+
+    for (var history in componentHistory) {
+      if (history.serviceType.contains('Ganti')) {
+        totalGanti++;
+        if (lastGanti == null || history.date.isAfter(lastGanti.date)) {
+          lastGanti = history;
+        }
+      } else if (history.serviceType.contains('Periksa')) {
+        totalPeriksa++;
+        if (lastPeriksa == null || history.date.isAfter(lastPeriksa.date)) {
+          lastPeriksa = history;
+        }
+      }
+    }
+
+    groups.add(ComponentServiceGroup(
+      componentName: componentName,
+      lastGanti: lastGanti,
+      lastPeriksa: lastPeriksa,
+      totalGanti: totalGanti,
+      totalPeriksa: totalPeriksa,
+      allHistory: componentHistory,
+    ));
+  }
+
+  groups.sort((a, b) {
+    final aRecent = a.getMostRecentService()?.date;
+    final bRecent = b.getMostRecentService()?.date;
+    if (aRecent == null && bRecent == null) return 0;
+    if (aRecent == null) return 1;
+    if (bRecent == null) return -1;
+    return bRecent.compareTo(aRecent);
+  });
+
+  return groups;
 });
 
 /// Accessor untuk get history by component name

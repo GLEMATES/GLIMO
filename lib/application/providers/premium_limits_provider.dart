@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'subscription_status_provider.dart';
 import 'motor_list_provider.dart';
@@ -25,7 +26,7 @@ class PremiumLimitsNotifier {
     required this.motors,
   });
 
-  bool get isPremium => subscriptionStatus.isActive;
+  bool get isPremium => Platform.isIOS || subscriptionStatus.isPremium;
   bool get canAddMotor => isPremium || motors.length < freeMotorLimit;
   int get motorLimit => isPremium ? -1 : freeMotorLimit;
   int get historyDaysLimit => isPremium ? -1 : freeHistoryDaysLimit;
@@ -71,13 +72,21 @@ final premiumLimitsProvider = Provider<PremiumLimitsNotifier>((ref) {
 final filteredTripHistoryProvider = Provider<List<TripHistory>>((ref) {
   final allTrips = ref.watch(tripHistoryProvider);
   final limits = ref.watch(premiumLimitsProvider);
+  final motors = ref.watch(motorListProvider);
+  final activeMotor = motors.where((m) => m.isActive).firstOrNull;
+
+  if (activeMotor == null) {
+    return [];
+  }
+
+  final motorTrips = allTrips.where((trip) => trip.motorId == activeMotor.id).toList();
 
   if (limits.isPremium) {
-    return allTrips;
+    return motorTrips;
   }
 
   final limitDate = limits.getHistoryStartDate();
-  return allTrips.where((trip) {
+  return motorTrips.where((trip) {
     return trip.date.isAfter(limitDate) || trip.date.isAtSameMomentAs(limitDate);
   }).toList();
 });

@@ -11,6 +11,7 @@ enum DebugEventType {
   trackingStop,
   autoStopScheduled,
   autoStopCancelled,
+  autoStopTriggered,
   autoSave,
 }
 
@@ -46,6 +47,8 @@ class DebugEvent {
         return '⏰';
       case DebugEventType.autoStopCancelled:
         return '🔄';
+      case DebugEventType.autoStopTriggered:
+        return '🛑';
       case DebugEventType.autoSave:
         return '💾';
     }

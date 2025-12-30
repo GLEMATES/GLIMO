@@ -194,41 +194,65 @@ class ServiceProgressCalculator {
     }
 
     final sortedSchedule = serviceItem.getSortedSchedule();
-    final totalKmFromPurchase = currentOdometer;
-
     final now = DateTime.now();
-    final totalMonthsFromReference = _calculateMonthsDifference(motorPurchaseDate, now);
+
+    final referenceDate = lastServiceDate ?? motorPurchaseDate;
+    final totalMonthsFromReference = _calculateMonthsDifference(referenceDate, now);
 
     ScheduleEntry? nextServiceEntry;
     ScheduleEntry? previousServiceEntry;
 
-    for (var entry in sortedSchedule) {
-      if (totalKmFromPurchase < entry.value.km) {
-        nextServiceEntry = entry.value;
-        break;
+    if (lastServiceOdometer != null && lastServiceOdometer > 0) {
+      bool foundNext = false;
+      for (var entry in sortedSchedule) {
+        if (entry.value.km > lastServiceOdometer) {
+          if (!foundNext) {
+            nextServiceEntry = entry.value;
+            foundNext = true;
+          }
+          break;
+        }
+        previousServiceEntry = entry.value;
       }
-      previousServiceEntry = entry.value;
+
+      if (nextServiceEntry == null) {
+        nextServiceEntry = sortedSchedule.last.value;
+        previousServiceEntry = sortedSchedule.length > 1
+            ? sortedSchedule[sortedSchedule.length - 2].value
+            : null;
+      }
+    } else {
+      for (var entry in sortedSchedule) {
+        if (currentOdometer < entry.value.km) {
+          nextServiceEntry = entry.value;
+          break;
+        }
+        previousServiceEntry = entry.value;
+      }
+
+      if (nextServiceEntry == null) {
+        nextServiceEntry = sortedSchedule.last.value;
+        previousServiceEntry = sortedSchedule.length > 1
+            ? sortedSchedule[sortedSchedule.length - 2].value
+            : null;
+      }
     }
 
-    if (nextServiceEntry == null) {
-      nextServiceEntry = sortedSchedule.last.value;
-      previousServiceEntry = sortedSchedule.length > 1
-          ? sortedSchedule[sortedSchedule.length - 2].value
-          : null;
-    }
-
-    final previousKm = previousServiceEntry?.km ?? 0;
+    final previousKm = lastServiceOdometer ?? previousServiceEntry?.km ?? 0;
     final nextKm = nextServiceEntry.km;
     final kmRange = nextKm - previousKm;
+    final currentKmInRange = currentOdometer - previousKm;
     final kmProgress = kmRange > 0
-        ? ((totalKmFromPurchase - previousKm) / kmRange).clamp(0.0, 1.0)
+        ? (currentKmInRange / kmRange).clamp(0.0, 1.0)
         : 0.0;
 
     final previousMonths = previousServiceEntry?.months ?? 0;
     final nextMonths = nextServiceEntry.months;
-    final monthsRange = nextMonths - previousMonths;
+    final monthsRange = lastServiceDate != null
+        ? nextMonths
+        : nextMonths - previousMonths;
     final timeProgress = monthsRange > 0
-        ? ((totalMonthsFromReference - previousMonths) / monthsRange).clamp(0.0, 1.0)
+        ? (totalMonthsFromReference / monthsRange).clamp(0.0, 1.0)
         : 0.0;
 
     final overallProgress = kmProgress > timeProgress ? kmProgress : timeProgress;
@@ -247,7 +271,7 @@ class ServiceProgressCalculator {
       kmProgress: kmProgress,
       timeProgress: timeProgress,
       overallProgress: overallProgress,
-      currentKm: totalKmFromPurchase,
+      currentKm: currentOdometer,
       monthsSinceStart: totalMonthsFromReference,
       triggerType: triggerType,
     );

@@ -6,6 +6,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../services/background_tracking_service.dart';
 import '../services/activity_recognition_service.dart';
 import 'tracking_mode_provider.dart';
@@ -96,10 +97,10 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
   final ActivityRecognitionService _activityService = ActivityRecognitionService();
   UserActivityType _lastActivity = UserActivityType.unknown;
 
-  // Minimum trip requirements (adjusted for real-world usage)
-  static const double minTripDistance = 0.3; // km (300 meters - reasonable for city trips)
-  static const int minTripDuration = 30; // seconds (30 seconds minimum)
-  static const int minPositionCount = 5; // number of positions (reduced for quick trips)
+  // Minimum trip requirements (adjusted for testing and real-world usage)
+  static const double minTripDistance = 0.05; // km (50 meters - good for testing)
+  static const int minTripDuration = 10; // seconds (10 seconds minimum)
+  static const int minPositionCount = 3; // number of positions (minimum for polyline)
 
   // Auto-save interval
   static const int autoSaveIntervalSeconds = 30; // Save every 30 seconds
@@ -149,6 +150,17 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
 
         // Only recover if status was tracking or paused
         if (status == 'tracking' || status == 'paused') {
+          final startTime = DateTime.parse(data['startTime']);
+          final now = DateTime.now();
+
+          // FIX: Don't recover sessions older than 24 hours
+          // This prevents old tracking sessions from being used with stale timestamps
+          if (now.difference(startTime).inHours > 24) {
+            debugPrint('⚠️ [GPS TRACKING] Ignoring old tracking session from $startTime (${now.difference(startTime).inHours} hours ago)');
+            await prefs.remove('active_tracking_${user.uid}');
+            return;
+          }
+
           final positions = (data['positions'] as List)
               .map((p) => Position(
                     latitude: p['latitude'],
@@ -167,12 +179,15 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
           state = GPSTrackingState(
             status: TrackingStatus.paused, // Set to paused for safety
             positions: positions,
-            startTime: DateTime.parse(data['startTime']),
+            startTime: startTime,
             totalDistance: data['totalDistance']?.toDouble() ?? 0.0,
           );
+
+          debugPrint('✅ [GPS TRACKING] Recovered tracking session from $startTime');
         }
       }
     } catch (e) {
+      debugPrint('❌ [GPS TRACKING] Failed to recover tracking: $e');
       // Ignore recovery errors
     }
   }
@@ -282,12 +297,17 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
 
     _autoStopTimer = Timer(Duration(seconds: autoStopDelaySeconds), () {
       debugPrint('⏰ [GPS TRACKING] Auto-stop timer expired');
+      debugPrint('   Current activity: ${_activityService.getActivityName(_lastActivity)}');
 
-      if (_lastActivity == UserActivityType.still || _lastActivity == UserActivityType.walking) {
-        debugPrint('🛑 [GPS TRACKING] Auto-stopping tracking with auto-save...');
-        stopTracking(autoSave: true);
+      if (_lastActivity == UserActivityType.inVehicle) {
+        debugPrint('⚠️ [GPS TRACKING] Vehicle detected, not auto-stopping');
       } else {
-        debugPrint('⚠️ [GPS TRACKING] Activity changed, not auto-stopping');
+        debugPrint('🛑 [GPS TRACKING] Auto-stopping tracking with auto-save...');
+        ref.read(debugPanelProvider.notifier).addEvent(
+          'Auto-stop triggered → Saving trip',
+          DebugEventType.autoStopTriggered,
+        );
+        stopTracking(autoSave: true);
       }
     });
   }
@@ -375,23 +395,51 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
 
   /// Start tracking trip
   Future<void> startTracking() async {
-    // Check permissions
+    // FIX: Clear any old/recovered tracking data before starting new session
+    // This ensures we always start with fresh state and current timestamp
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.remove('active_tracking_${user.uid}');
+        debugPrint('🧹 [GPS TRACKING] Cleared old tracking data before starting new session');
+      } catch (e) {
+        debugPrint('⚠️ [GPS TRACKING] Failed to clear old tracking data: $e');
+      }
+    }
+
+    // Check location service enabled
     bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
       throw Exception('Location services are disabled');
     }
 
-    LocationPermission permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
-      permission = await Geolocator.requestPermission();
-      if (permission == LocationPermission.denied) {
-        throw Exception('Location permissions are denied');
-      }
+    // STEP 1: Request foreground location permission (When in Use)
+    debugPrint('📍 [GPS TRACKING] Requesting location permission...');
+    var locationStatus = await Permission.location.request();
+
+    if (locationStatus.isDenied || locationStatus.isPermanentlyDenied) {
+      throw Exception('Location permission denied');
     }
 
-    if (permission == LocationPermission.deniedForever) {
-      throw Exception('Location permissions are permanently denied');
+    debugPrint('✅ [GPS TRACKING] Location permission granted: $locationStatus');
+
+    // STEP 2: Request background location permission (Allow All the Time)
+    // This triggers the second prompt with "Allow all the time" option on Android 10+
+    debugPrint('📍 [GPS TRACKING] Requesting background location permission...');
+    var backgroundStatus = await Permission.locationAlways.request();
+
+    if (backgroundStatus.isGranted) {
+      debugPrint('✅ [GPS TRACKING] Background location permission granted!');
+    } else if (backgroundStatus.isDenied) {
+      debugPrint('⚠️ [GPS TRACKING] Background location denied, tracking may stop when app is backgrounded');
+      // Continue anyway, tracking will work while app is in foreground
+    } else if (backgroundStatus.isPermanentlyDenied) {
+      debugPrint('❌ [GPS TRACKING] Background location permanently denied');
+      // Continue anyway, tracking will work while app is in foreground
     }
+
+    debugPrint('📍 [GPS TRACKING] Final background status: $backgroundStatus');
 
     // Get initial position
     Position initialPosition = await Geolocator.getCurrentPosition(
@@ -401,11 +449,14 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
       ),
     );
 
-    // Update state
+    final now = DateTime.now();
+    debugPrint('🚀 [GPS TRACKING] Starting new tracking session at $now');
+
+    // Update state with fresh data
     state = GPSTrackingState(
       status: TrackingStatus.tracking,
       positions: [initialPosition],
-      startTime: DateTime.now(),
+      startTime: now,
       totalDistance: 0.0,
     );
 
@@ -443,7 +494,6 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
     await _autoSaveTracking();
 
     // Start background service for tracking even when app is closed
-    final user = FirebaseAuth.instance.currentUser;
     if (user != null) {
       try {
         await BackgroundTrackingService.startTracking(user.uid);
@@ -527,16 +577,24 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
   Future<void> _autoSaveTripToHistory() async {
     try {
       debugPrint('💾 [AUTO-SAVE] Attempting to auto-save trip...');
+      debugPrint('   GPS Points: ${state.positions.length}');
+      debugPrint('   Distance: ${state.totalDistance.toStringAsFixed(3)} km');
+      debugPrint('   Duration: ${state.duration?.inSeconds ?? 0}s');
+
       ref.read(debugPanelProvider.notifier).addEvent(
         'Attempting to auto-save trip...',
         DebugEventType.autoSave,
       );
 
       if (!meetsMinimumRequirements()) {
-        debugPrint('⚠️ [AUTO-SAVE] Trip does not meet minimum requirements');
-        debugPrint('   ${getRequirementsMessage()}');
+        final requirement = getRequirementsMessage();
+        debugPrint('❌ [AUTO-SAVE] Trip REJECTED - does not meet minimum requirements');
+        debugPrint('   Reason: $requirement');
+        debugPrint('   Current: ${state.positions.length} points, ${state.totalDistance.toStringAsFixed(3)}km, ${state.duration?.inSeconds ?? 0}s');
+        debugPrint('   Required: $minPositionCount points, ${minTripDistance}km, ${minTripDuration}s');
+
         ref.read(debugPanelProvider.notifier).addEvent(
-          'Trip too short: ${getRequirementsMessage()}',
+          'Trip REJECTED: $requirement',
           DebugEventType.warning,
         );
         return;
