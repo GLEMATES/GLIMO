@@ -1,7 +1,7 @@
 name: glimo
 description: "Glimo - Personal Development Version"
 publish_to: 'none'
-version: 1.0.0+1
+version: 1.0.0+34
 
 environment:
   sdk: ^3.5.0
@@ -40,6 +40,7 @@ dependencies:
   in_app_purchase: ^3.2.0
   in_app_purchase_android: ^0.3.6
   in_app_purchase_storekit: ^0.3.16
+  k_means_cluster: ^0.3.1
 
 dev_dependencies:
   flutter_test:

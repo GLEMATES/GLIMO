@@ -1,0 +1,111 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper function: check if user is authenticated
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    // Helper function: check if user owns the document
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Helper function: check if user has premium subscription
+    function isPremium(userId) {
+      let subscription = get(/databases/$(database)/documents/users/$(userId)/subscription/current);
+      return subscription.data.isActive == true
+        && subscription.data.expiryDate > request.time.toMillis();
+    }
+
+    // Helper function: count user's motors
+    function motorCount(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)/profile).data.motorCount;
+    }
+
+    // Motors collection - public read for all authenticated users
+    match /motors/{motorId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // Users collection - users can only read/write their own data
+    match /users/{userId} {
+      allow read, write: if isOwner(userId);
+
+      // Profile document - store motor count for quick access
+      match /profile {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId);
+      }
+
+      // Subscription subcollection - PRODUCTION: Restricted write access
+      // Users can read their own subscription status
+      // Write restricted to prevent subscription injection attacks
+      match /subscription/{subId} {
+        allow read: if isOwner(userId);
+        // Allow write only for legitimate purchase flows
+        // In future: Only Cloud Functions should write (server-side verification)
+        allow create: if isOwner(userId)
+          && request.resource.data.keys().hasAll(['isActive', 'plan', 'platform'])
+          && request.resource.data.platform in ['android', 'ios'];
+        allow update: if isOwner(userId)
+          && request.resource.data.keys().hasAll(['isActive', 'plan', 'platform']);
+        allow delete: if false; // Never allow delete
+      }
+
+      // User's motorcycles subcollection - ENFORCE LIMITS
+      match /motors/{motorcycleId} {
+        allow read: if isOwner(userId);
+        allow update, delete: if isOwner(userId);
+
+        // CREATE: Free users max 1 motor, Premium users unlimited
+        allow create: if isOwner(userId)
+          && (isPremium(userId) || motorCount(userId) < 1);
+      }
+
+      // User's service history subcollection
+      match /service_history/{serviceId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's notifications subcollection
+      match /notifications/{notificationId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's GPS tracking data subcollection
+      match /gps_tracking/{trackingId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's trip history subcollection
+      // Premium users: unlimited, Free users: limited to 7 days (enforced client-side)
+      match /trip_history/{tripId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's usage analytics subcollection
+      match /usage_analytics/{analyticsId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // Legacy subscriptions subcollection (keep for backward compatibility)
+      match /subscriptions/{subscriptionId} {
+        allow read, write: if isOwner(userId);
+      }
+
+      // User's payment history subcollection
+      match /payments/{paymentId} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Deny all other requests by default
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

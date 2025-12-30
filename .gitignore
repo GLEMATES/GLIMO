@@ -1,6 +1,7 @@
 # Miscellaneous
 *.class
-
+*.DS_Store
+.DS_Store
 *.lock
 *.log
 *.pyc
@@ -55,6 +56,7 @@ unlinked_spec.ds
 **/android/**/GeneratedPluginRegistrant.java
 **/android/key.properties
 *.jks
+**/android/app/google-services.json
 
 # iOS/XCode related
 **/ios/**/*.mode1v3
@@ -115,7 +117,14 @@ app.*.symbols
 !**/ios/**/default.pbxuser
 !**/ios/**/default.perspectivev3
 !/packages/flutter_tools/test/data/dart_dependencies_test/**/.packages
-!/dev/ci/**/Gemfile.lock.DS_Store
+!/dev/ci/**/Gemfile.lock
 
 # FVM Version Cache
 .fvm/
+
+# Environment variables
+.env
+.env.local
+.env.production*.md
+*.md
+node_modules/

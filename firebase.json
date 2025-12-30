@@ -1,1 +1,56 @@
-{"flutter":{"platforms":{"android":{"default":{"projectId":"glimo-2eff0","appId":"1:279294323481:android:81eff7de7699e087303388","fileOutput":"android/app/google-services.json"}},"ios":{"default":{"projectId":"glimo-2eff0","appId":"1:279294323481:ios:30fc2e426630763f303388","uploadDebugSymbols":false,"fileOutput":"ios/Runner/GoogleService-Info.plist"}},"macos":{"default":{"projectId":"glimo-2eff0","appId":"1:279294323481:ios:4e93a3e52a4dd135303388","uploadDebugSymbols":false,"fileOutput":"macos/Runner/GoogleService-Info.plist"}},"dart":{"lib/firebase_options.dart":{"projectId":"glimo-2eff0","configurations":{"android":"1:279294323481:android:81eff7de7699e087303388","ios":"1:279294323481:ios:30fc2e426630763f303388","macos":"1:279294323481:ios:4e93a3e52a4dd135303388","web":"1:279294323481:web:c311f3fd94d66c3b303388","windows":"1:279294323481:web:78ad5e40a2381add303388"}}}}}}
+{
+  "firestore": {
+    "rules": "firestore.rules"
+  },
+  "functions": {
+    "source": "functions",
+    "runtime": "nodejs18"
+  },
+  "hosting": {
+    "public": "public",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "glimo-2eff0",
+          "appId": "1:279294323481:android:81eff7de7699e087303388",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "glimo-2eff0",
+          "appId": "1:279294323481:ios:30fc2e426630763f303388",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "glimo-2eff0",
+          "appId": "1:279294323481:ios:4e93a3e52a4dd135303388",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "glimo-2eff0",
+          "configurations": {
+            "android": "1:279294323481:android:81eff7de7699e087303388",
+            "ios": "1:279294323481:ios:30fc2e426630763f303388",
+            "macos": "1:279294323481:ios:4e93a3e52a4dd135303388",
+            "web": "1:279294323481:web:c311f3fd94d66c3b303388",
+            "windows": "1:279294323481:web:78ad5e40a2381add303388"
+          }
+        }
+      }
+    }
+  }
+}
