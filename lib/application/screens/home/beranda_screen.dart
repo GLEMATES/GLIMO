@@ -15,6 +15,7 @@ import '../../widgets/monthly_stats_card.dart';
 import '../../widgets/trip_recovery_dialog.dart';
 import '../../widgets/daily_service_checker.dart';
 import '../../widgets/debug_panel_widget.dart';
+import '../../widgets/deferred_purchase_restore.dart';
 
 class BerandaScreen extends ConsumerWidget {
   const BerandaScreen({super.key});
@@ -36,6 +37,7 @@ class BerandaScreen extends ConsumerWidget {
           const TripRecoveryChecker(),
           const DailyServiceChecker(),
           const DebugPanelWidget(),
+          const DeferredPurchaseRestore(),
         ],
       ),
     );

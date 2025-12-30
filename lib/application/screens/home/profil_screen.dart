@@ -27,9 +27,8 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
   bool _showTestButton = false;
 
   void _onProfilePhotoTap() {
-    // Test menu hanya tersedia di debug mode
-    if (!kDebugMode) return;
-
+    // Test menu tersedia dengan tap 5x di foto profile
+    // Temporarily enabled untuk internal testing
     setState(() {
       _tapCount++;
       if (_tapCount >= 5) {
@@ -80,7 +79,7 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
             top: AppSpacing.l,
             left: AppSpacing.l,
             right: AppSpacing.l,
-            bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.l,
+            bottom: MediaQuery.of(context).viewInsets.bottom + MediaQuery.of(context).padding.bottom + AppSpacing.l,
           ),
           child: Consumer(
             builder: (context, ref, child) {
@@ -482,6 +481,13 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
             context.push('/analisis-penggunaan');
           },
         ),
+        // ProfileMenuItem(
+        //   icon: Icons.scatter_plot,
+        //   title: 'K-Means (Demo Presentasi)',
+        //   onTap: () {
+        //     context.push('/kmeans-demo');
+        //   },
+        // ),
         ProfileMenuItem(
           icon: Icons.navigation,
           title: 'Pengaturan GPS Tracking',
@@ -518,7 +524,8 @@ class _ProfilScreenState extends ConsumerState<ProfilScreen> {
           },
         ),
         // Hidden developer feature: Test notification (Debug mode only)
-        if (kDebugMode && _showTestButton)
+        // Temporarily enabled untuk internal testing
+        if (_showTestButton)
           ProfileMenuItem(
             icon: Icons.developer_mode,
             title: '🛠️ Developer Menu',

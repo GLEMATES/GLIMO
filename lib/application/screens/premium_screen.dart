@@ -1,3 +1,4 @@
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../themes/app_colors.dart';
@@ -11,6 +12,35 @@ class PremiumScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Listen to purchase result changes
+    ref.listen(lastPurchaseResultProvider, (previous, next) {
+      if (next == null) return;
+
+      if (next.startsWith('success:')) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Subscription berhasil diaktifkan!'),
+            backgroundColor: Color(0xFF4CAF50),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        Navigator.pop(context);
+      } else if (next.startsWith('error:')) {
+        final error = next.substring(6);
+        if (!context.mounted) return;
+        _showPurchaseErrorDialog(context, 'Error Purchase',
+            'Terjadi error: $error\n\nSilakan coba lagi atau hubungi support jika masalah berlanjut.');
+      } else if (next == 'canceled') {
+        if (!context.mounted) return;
+        _showPurchaseErrorDialog(
+            context, 'Purchase Dibatalkan', 'Anda membatalkan proses pembayaran.');
+      }
+
+      // Reset state
+      ref.read(lastPurchaseResultProvider.notifier).clear();
+    });
+
     return Scaffold(
       backgroundColor: Colors.white,
       appBar: AppBar(
@@ -21,7 +51,7 @@ class PremiumScreen extends ConsumerWidget {
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
-          'GLIMO Premium',
+          'GLEMO Premium',
           style: AppTypography.titleLarge.copyWith(
             fontWeight: FontWeight.bold,
             color: const Color(0xFFB71C1C),
@@ -151,6 +181,39 @@ class PremiumScreen extends ConsumerWidget {
                     isPopular: true,
                     onTap: () => _handleYearlyPurchase(context, ref),
                   ),
+
+                  const SizedBox(height: AppSpacing.xl),
+
+                  Center(
+                    child: TextButton.icon(
+                      onPressed: () => _handleRestorePurchases(context, ref),
+                      icon: const Icon(
+                        Icons.restore,
+                        color: Color(0xFFB71C1C),
+                      ),
+                      label: Text(
+                        'Pulihkan Pembelian',
+                        style: AppTypography.bodyLarge.copyWith(
+                          color: const Color(0xFFB71C1C),
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.s),
+
+                  Center(
+                    child: Text(
+                      'Sudah berlangganan sebelumnya?\nKlik untuk memulihkan pembelian Anda',
+                      textAlign: TextAlign.center,
+                      style: AppTypography.bodySmall.copyWith(
+                        color: AppColors.neutral600,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: AppSpacing.m),
 
                 ],
               ),
@@ -389,6 +452,49 @@ class PremiumScreen extends ConsumerWidget {
   }
 
   void _handleMonthlyPurchase(BuildContext context, WidgetRef ref) async {
+    if (Platform.isIOS) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Subscription berhasil diaktifkan!'),
+          backgroundColor: Color(0xFF4CAF50),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      Navigator.pop(context);
+      return;
+    }
+
+    final paymentService = ref.read(paymentServiceProvider);
+
+    if (!paymentService.isAvailable) {
+      if (!context.mounted) return;
+      _showErrorDialog(
+        context,
+        'In-App Purchase Tidak Tersedia',
+        'Google Play Billing tidak tersedia. Pastikan:\n'
+        '• Anda menggunakan device fisik (bukan emulator)\n'
+        '• Google Play Store terinstall\n'
+        '• Anda login dengan Google Account',
+      );
+      return;
+    }
+
+    final product = paymentService.getProduct('glimo_premium_monthly');
+    if (product == null) {
+      if (!context.mounted) return;
+      _showErrorDialog(
+        context,
+        'Produk Tidak Ditemukan',
+        'Produk subscription belum tersedia.\n\n'
+        'Kemungkinan:\n'
+        '• Produk belum aktif di Play Console\n'
+        '• Butuh waktu 2-4 jam setelah setup produk\n'
+        '• Coba restart aplikasi',
+      );
+      return;
+    }
+
     final canActivateTrial = ref.read(subscriptionStatusProvider.notifier).canActivateTrial();
 
     if (canActivateTrial) {
@@ -447,50 +553,78 @@ class PremiumScreen extends ConsumerWidget {
       );
 
       if (shouldActivateTrial == true) {
+        if (!context.mounted) return;
+        _showLoadingDialog(context);
         await ref.read(purchaseProvider.notifier).activateFreeTrial();
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Free trial 14 hari berhasil diaktifkan!'),
-              backgroundColor: Color(0xFF4CAF50),
-            ),
-          );
-          Navigator.pop(context);
-        }
+        if (!context.mounted) return;
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Free trial 14 hari berhasil diaktifkan!'),
+            backgroundColor: Color(0xFF4CAF50),
+          ),
+        );
+        Navigator.pop(context);
         return;
       }
     }
 
+    if (!context.mounted) return;
+    _showLoadingDialog(context);
+
+    debugPrint('🔵 [UI] Starting monthly purchase...');
     await ref.read(purchaseProvider.notifier).purchaseMonthly();
 
-    if (context.mounted) {
-      final purchaseState = ref.read(purchaseProvider);
-      purchaseState.when(
-        data: (success) {
-          if (success) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Subscription berhasil diaktifkan!'),
-                backgroundColor: Color(0xFF4CAF50),
-              ),
-            );
-            Navigator.pop(context);
-          }
-        },
-        loading: () {},
-        error: (error, _) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: $error'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        },
-      );
-    }
+    if (!context.mounted) return;
+    Navigator.pop(context);
+
+    debugPrint('🔵 [UI] Waiting for purchase result from stream...');
   }
 
   void _handleYearlyPurchase(BuildContext context, WidgetRef ref) async {
+    if (Platform.isIOS) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Subscription berhasil diaktifkan!'),
+          backgroundColor: Color(0xFF4CAF50),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      Navigator.pop(context);
+      return;
+    }
+
+    final paymentService = ref.read(paymentServiceProvider);
+
+    if (!paymentService.isAvailable) {
+      if (!context.mounted) return;
+      _showErrorDialog(
+        context,
+        'In-App Purchase Tidak Tersedia',
+        'Google Play Billing tidak tersedia. Pastikan:\n'
+        '• Anda menggunakan device fisik (bukan emulator)\n'
+        '• Google Play Store terinstall\n'
+        '• Anda login dengan Google Account',
+      );
+      return;
+    }
+
+    final product = paymentService.getProduct('glimo_premium_yearly');
+    if (product == null) {
+      if (!context.mounted) return;
+      _showErrorDialog(
+        context,
+        'Produk Tidak Ditemukan',
+        'Produk subscription belum tersedia.\n\n'
+        'Kemungkinan:\n'
+        '• Produk belum aktif di Play Console\n'
+        '• Butuh waktu 2-4 jam setelah setup produk\n'
+        '• Coba restart aplikasi',
+      );
+      return;
+    }
+
     final canActivateTrial = ref.read(subscriptionStatusProvider.notifier).canActivateTrial();
 
     if (canActivateTrial) {
@@ -549,46 +683,214 @@ class PremiumScreen extends ConsumerWidget {
       );
 
       if (shouldActivateTrial == true) {
+        if (!context.mounted) return;
+        _showLoadingDialog(context);
         await ref.read(purchaseProvider.notifier).activateFreeTrial();
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Free trial 14 hari berhasil diaktifkan!'),
-              backgroundColor: Color(0xFF4CAF50),
-            ),
-          );
-          Navigator.pop(context);
-        }
+        if (!context.mounted) return;
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Free trial 14 hari berhasil diaktifkan!'),
+            backgroundColor: Color(0xFF4CAF50),
+          ),
+        );
+        Navigator.pop(context);
         return;
       }
     }
 
+    if (!context.mounted) return;
+    _showLoadingDialog(context);
+
+    debugPrint('🔵 [UI] Starting yearly purchase...');
     await ref.read(purchaseProvider.notifier).purchaseYearly();
 
-    if (context.mounted) {
-      final purchaseState = ref.read(purchaseProvider);
-      purchaseState.when(
-        data: (success) {
-          if (success) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Subscription berhasil diaktifkan!'),
-                backgroundColor: Color(0xFF4CAF50),
-              ),
-            );
-            Navigator.pop(context);
-          }
-        },
-        loading: () {},
-        error: (error, _) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error: $error'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        },
+    if (!context.mounted) return;
+    Navigator.pop(context);
+
+    debugPrint('🔵 [UI] Waiting for purchase result from stream...');
+  }
+
+  void _handleRestorePurchases(BuildContext context, WidgetRef ref) async {
+    if (Platform.isIOS) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('iOS memiliki akses unlimited secara default'),
+          backgroundColor: Color(0xFF4CAF50),
+          duration: Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+
+    final paymentService = ref.read(paymentServiceProvider);
+
+    if (!paymentService.isAvailable) {
+      if (!context.mounted) return;
+      _showErrorDialog(
+        context,
+        'In-App Purchase Tidak Tersedia',
+        'Google Play Billing tidak tersedia. Pastikan:\n'
+        '• Anda menggunakan device fisik (bukan emulator)\n'
+        '• Google Play Store terinstall\n'
+        '• Anda login dengan Google Account',
+      );
+      return;
+    }
+
+    if (!context.mounted) return;
+    _showLoadingDialog(context);
+
+    try {
+      debugPrint('🔄 [UI] Starting restore purchases...');
+
+      await ref.read(purchaseProvider.notifier).restorePurchases();
+
+      await Future.delayed(const Duration(seconds: 2));
+
+      await ref.read(subscriptionStatusProvider.notifier).loadSubscriptionStatus();
+
+      if (!context.mounted) return;
+      Navigator.pop(context);
+
+      final status = ref.read(subscriptionStatusProvider);
+      if (status.isPremium) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Pembelian berhasil dipulihkan! Status premium aktif.'),
+            backgroundColor: Color(0xFF4CAF50),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        Navigator.pop(context);
+      } else {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Tidak ada pembelian aktif yang ditemukan'),
+            backgroundColor: Color(0xFFFFA726),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+
+      debugPrint('✅ [UI] Restore purchases completed');
+    } catch (e, stackTrace) {
+      debugPrint('❌ [UI] Restore purchases error: $e');
+      debugPrint('   Stack: $stackTrace');
+
+      if (!context.mounted) return;
+
+      try {
+        Navigator.pop(context);
+      } catch (navError) {
+        debugPrint('⚠️ [UI] Navigator pop error: $navError');
+      }
+
+      if (!context.mounted) return;
+      _showErrorDialog(
+        context,
+        'Gagal Memulihkan Pembelian',
+        'Terjadi error saat memulihkan pembelian.\n\nSilakan coba lagi atau hubungi support.',
       );
     }
   }
+
+  void _showLoadingDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => PopScope(
+        canPop: false,
+        child: Dialog(
+          backgroundColor: Colors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(
+                  valueColor: AlwaysStoppedAnimation<Color>(Color(0xFFE40000)),
+                ),
+                const SizedBox(height: AppSpacing.l),
+                Text(
+                  'Memproses pembayaran...',
+                  style: AppTypography.titleMedium.copyWith(
+                    color: const Color(0xFFB71C1C),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.s),
+                Text(
+                  'Mohon tunggu sebentar',
+                  style: AppTypography.bodyMedium.copyWith(
+                    color: AppColors.neutral600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showErrorDialog(BuildContext context, String title, String message) {
+    _showPurchaseErrorDialog(context, title, message);
+  }
+}
+
+// Helper function untuk error dialog (digunakan dari ref.listen juga)
+void _showPurchaseErrorDialog(BuildContext context, String title, String message) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+      ),
+      title: Row(
+        children: [
+          const Icon(Icons.error_outline, color: Colors.red, size: 28),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Text(
+              title,
+              style: AppTypography.titleMedium.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Colors.red.shade700,
+              ),
+            ),
+          ),
+        ],
+      ),
+      content: Text(
+        message,
+        style: AppTypography.bodyMedium.copyWith(
+          color: AppColors.neutral700,
+        ),
+      ),
+      actions: [
+        SizedBox(
+          width: double.infinity,
+          child: ElevatedButton(
+            onPressed: () => Navigator.pop(context),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppColors.normalHover,
+              foregroundColor: AppColors.neutral0,
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            child: const Text('OK'),
+          ),
+        ),
+      ],
+    ),
+  );
 }

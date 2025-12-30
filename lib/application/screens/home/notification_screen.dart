@@ -21,10 +21,6 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
     final category = _selectedIndex == 0 ? 'service' : 'general';
     await ref.read(notificationNotifierProvider).markAllAsRead(category);
 
-    // Refresh providers
-    ref.invalidate(serviceNotificationsProvider);
-    ref.invalidate(generalNotificationsProvider);
-
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
@@ -98,9 +94,6 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
                             .read(notificationNotifierProvider)
                             .markAsRead(notification.id);
 
-                        ref.invalidate(serviceNotificationsProvider);
-                        ref.invalidate(generalNotificationsProvider);
-
                         if (!mounted || payload == null) return;
 
                         switch (payload) {
@@ -126,8 +119,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // Watch the appropriate provider based on selected tab
-    final notificationsAsync = _selectedIndex == 0
+    final notifications = _selectedIndex == 0
         ? ref.watch(serviceNotificationsProvider)
         : ref.watch(generalNotificationsProvider);
 
@@ -214,16 +206,7 @@ class _NotificationScreenState extends ConsumerState<NotificationScreen> {
             ),
           ),
           Expanded(
-            child: notificationsAsync.when(
-              data: (notifications) => _buildNotificationList(notifications),
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (error, stack) => Center(
-                child: Text(
-                  'Error memuat notifikasi',
-                  style: AppTypography.bodyLarge.copyWith(color: AppColors.neutral500),
-                ),
-              ),
-            ),
+            child: _buildNotificationList(notifications),
           ),
         ],
       ),

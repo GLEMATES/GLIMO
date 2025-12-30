@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../themes/app_colors.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/auth_state.dart';
 
 class SplashScreen extends ConsumerStatefulWidget {
   const SplashScreen({super.key});
@@ -77,34 +78,82 @@ class _SplashScreenState extends ConsumerState<SplashScreen>
   Future<void> _navigateToNextScreen() async {
     if (!mounted) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
-    final hasEverLoggedIn = prefs.getBool('hasEverLoggedIn') ?? false;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final hasSeenOnboarding = prefs.getBool('hasSeenOnboarding') ?? false;
+      final hasEverLoggedIn = prefs.getBool('hasEverLoggedIn') ?? false;
 
-    final authState = ref.read(authStateProvider);
+      // CRITICAL FIX: Wait for auth state to be ready (not initial/loading)
+      // This prevents race condition on cold start
+      debugPrint('🔄 [Splash] Waiting for auth state to be ready...');
 
-    authState.maybeWhen(
-      authenticated: (_) {
-        // Jika sudah login, langsung ke beranda (bypass splash dan onboarding)
-        if (mounted) {
-          context.go('/beranda');
+      int attempts = 0;
+      const maxAttempts = 30; // 3 seconds max wait (30 * 100ms)
+
+      // Poll until auth state is no longer initial (meaning Firebase check is done)
+      AuthState authState = ref.read(authStateProvider);
+
+      while (attempts < maxAttempts && mounted) {
+        await Future.delayed(const Duration(milliseconds: 100));
+        if (!mounted) return;
+
+        authState = ref.read(authStateProvider);
+        attempts++;
+
+        // Break if we got a definitive state (authenticated or unauthenticated)
+        final isReady = authState.maybeWhen(
+          authenticated: (_) => true,
+          unauthenticated: () => true,
+          orElse: () => false,
+        );
+
+        if (isReady) {
+          debugPrint('✅ [Splash] Auth state ready after ${attempts * 100}ms');
+          break;
         }
-      },
-      orElse: () {
-        // Jika belum login (unauthenticated atau error)
-        if (hasEverLoggedIn || hasSeenOnboarding) {
-          // User pernah login atau sudah lihat onboarding → langsung ke login
+      }
+
+      if (!mounted) return;
+
+      authState.maybeWhen(
+        authenticated: (_) {
+          // Jika sudah login, langsung ke beranda (bypass splash dan onboarding)
+          debugPrint('✅ [Splash] User authenticated, going to beranda');
           if (mounted) {
-            context.go('/login');
+            context.go('/beranda');
           }
-        } else {
-          // User pertama kali buka app → tampilkan onboarding
-          if (mounted) {
-            context.go('/onboarding');
+        },
+        orElse: () {
+          // Jika belum login (unauthenticated atau error)
+          if (hasEverLoggedIn || hasSeenOnboarding) {
+            // User pernah login atau sudah lihat onboarding → langsung ke login
+            debugPrint('ℹ️ [Splash] User not authenticated, going to login');
+            if (mounted) {
+              context.go('/login');
+            }
+          } else {
+            // User pertama kali buka app → tampilkan onboarding
+            debugPrint('ℹ️ [Splash] First time user, going to onboarding');
+            if (mounted) {
+              context.go('/onboarding');
+            }
           }
+        },
+      );
+    } catch (e, stackTrace) {
+      debugPrint('❌ [Splash] CRITICAL ERROR during navigation: $e');
+      debugPrint('   Stack: $stackTrace');
+
+      // Emergency fallback - go to login screen
+      if (mounted) {
+        try {
+          context.go('/login');
+        } catch (navError) {
+          debugPrint('❌ [Splash] Failed to navigate even to login: $navError');
+          // At this point, just stay on splash - better than crash
         }
-      },
-    );
+      }
+    }
   }
 
   void _setupAnimations() {

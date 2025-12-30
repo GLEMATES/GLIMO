@@ -8,6 +8,7 @@ import '../../themes/app_colors.dart';
 import '../../themes/app_spacing.dart';
 import '../../themes/app_typography.dart';
 import '../../widgets/service_card_new.dart';
+import '../../../core/utils/logger.dart';
 
 class MonitoringScreen extends ConsumerStatefulWidget {
   const MonitoringScreen({super.key});
@@ -18,17 +19,24 @@ class MonitoringScreen extends ConsumerStatefulWidget {
 
 class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
   bool _isKetentuanExpanded = false;
+  bool _isLoadingMotors = true;
 
   @override
   void initState() {
     super.initState();
-    debugPrint('');
-    debugPrint('🖥️ [MONITORING] ========================================');
-    debugPrint('🖥️ [MONITORING] MonitoringScreen OPENED');
-    debugPrint('🖥️ [MONITORING] ========================================');
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      debugPrint('🖥️ [MONITORING] Loading motors...');
-      ref.read(motorListProvider.notifier).loadMotors();
+    Logger.info('MonitoringScreen opened', tag: 'MONITORING');
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      Logger.log('Loading motors...', tag: 'MONITORING');
+
+      // Wait for motors to load before rendering
+      await ref.read(motorListProvider.notifier).loadMotors();
+
+      if (mounted) {
+        setState(() {
+          _isLoadingMotors = false;
+        });
+      }
+
       ref.invalidate(servisScheduleProvider);
       _fixReferenceDateIfNeeded();
     });
@@ -51,8 +59,8 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     final expectedMonths = (currentOdometer / 1000).round();
 
     if (monthsFromRef < expectedMonths - 3) {
-      debugPrint('⚠️ [FIX] Reference date seems wrong! Recalculating...');
-      debugPrint('⚠️ [FIX] Current: $monthsFromRef months, Expected: ~$expectedMonths months');
+      Logger.warn('Reference date seems wrong! Recalculating...', tag: 'FIX');
+      Logger.log('Current: $monthsFromRef months, Expected: ~$expectedMonths months', tag: 'FIX');
 
       try {
         final firestore = FirebaseFirestore.instance;
@@ -78,16 +86,16 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
           final newRefDate = _estimateReferenceDateFromOdometer(currentOdometer, serviceSchedule);
           final newMonths = (now.year - newRefDate.year) * 12 + (now.month - newRefDate.month);
 
-          debugPrint('✅ [FIX] New reference date: $newRefDate');
-          debugPrint('✅ [FIX] New months from reference: $newMonths');
+          Logger.log('New reference date: $newRefDate', tag: 'FIX');
+          Logger.log('New months from reference: $newMonths', tag: 'FIX');
 
           await ref.read(motorListProvider.notifier).updateTanggalBeli(activeMotor.id, newRefDate);
           ref.invalidate(servisScheduleProvider);
 
-          debugPrint('🎉 [FIX] Reference date UPDATED!');
+          Logger.success('Reference date updated!', tag: 'FIX');
         }
       } catch (e) {
-        debugPrint('❌ [FIX] Error: $e');
+        Logger.error('Failed to fix reference date', tag: 'FIX', error: e);
       }
     }
   }
@@ -195,7 +203,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                               });
 
                               try {
-                                // 1. Save ke riwayat servis
                                 await ref.read(serviceHistoryProvider.notifier).addServiceHistory(
                                   motorId: motorId,
                                   motorName: motorName,
@@ -204,9 +211,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                                   odometer: currentOdometer,
                                 );
 
-                                // 2. RESET reference date dan odometer untuk komponen ini
-                                // Note: Untuk reset per-component, kita butuh tracking terpisah
-                                // Untuk sementara, invalidate provider agar re-calculate
                                 ref.invalidate(servisScheduleProvider);
 
                                 // ignore: use_build_context_synchronously
@@ -303,6 +307,35 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading indicator while motors are being loaded
+    if (_isLoadingMotors) {
+      return Scaffold(
+        backgroundColor: AppColors.neutral0,
+        appBar: AppBar(
+          title: Text(
+            'Monitoring Servis',
+            style: AppTypography.headlineSmall.copyWith(color: AppColors.neutral0),
+          ),
+          backgroundColor: AppColors.normalHover,
+        ),
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: AppColors.normalHover),
+              const SizedBox(height: AppSpacing.l),
+              Text(
+                'Memuat data motor...',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.neutral700,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
     // PENTING: Gunakan watch() agar reactive!
     // ref tersedia dari ConsumerState
     final motors = ref.watch(motorListProvider);
@@ -418,14 +451,8 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
             initialOdometer = 0;
           }
 
-          // Tanggal motor dibeli (untuk tracking waktu yang akurat)
           final motorPurchaseDate = activeMotor.tanggalBeli;
 
-          // Optional: Tanggal servis terakhir (untuk existing user)
-          final lastServiceDate = activeMotor.tanggalServisTerakhir;
-          final lastServiceOdometer = activeMotor.odometerServisTerakhir;
-
-          // Get ALL services (tidak ada pemisahan lagi)
           final allServices = schedule.services;
 
           if (allServices.isEmpty) {
@@ -506,7 +533,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        '${schedule.motorName} (${schedule.category})',
+                                        '${activeMotor.type} - ${activeMotor.model}',
                                         style: AppTypography.bodyMedium.copyWith(
                                           color: AppColors.neutral0.withValues(alpha: 0.9),
                                         ),
@@ -577,7 +604,11 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                                             style: AppTypography.bodyLarge.copyWith(
                                               fontWeight: FontWeight.bold,
                                               color: AppColors.dark,
+                                              fontSize: 15,
                                             ),
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            softWrap: false,
                                           ),
                                           const SizedBox(height: 2),
                                           Text(
@@ -725,13 +756,25 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
                   padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
                   child: Column(
                     children: allServices.map((service) {
+                      final componentHistory = ref.read(serviceHistoryProvider.notifier)
+                          .getHistoryByComponent(service.component);
+
+                      DateTime? componentLastServiceDate;
+                      int? componentLastServiceOdometer;
+
+                      if (componentHistory.isNotEmpty) {
+                        final mostRecent = componentHistory.first;
+                        componentLastServiceDate = mostRecent.date;
+                        componentLastServiceOdometer = mostRecent.odometer;
+                      }
+
                       final nextServiceInfo = ServiceProgressCalculator.calculateNextService(
                         serviceItem: service,
                         currentOdometer: currentOdometer,
                         initialOdometer: initialOdometer,
                         motorPurchaseDate: motorPurchaseDate,
-                        lastServiceDate: lastServiceDate,
-                        lastServiceOdometer: lastServiceOdometer,
+                        lastServiceDate: componentLastServiceDate,
+                        lastServiceOdometer: componentLastServiceOdometer,
                       );
 
                       if (nextServiceInfo == null) {

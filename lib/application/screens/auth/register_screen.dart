@@ -198,6 +198,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     });
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           _buildHeader(),
@@ -397,6 +398,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 300),
               ],
             ),
           ),

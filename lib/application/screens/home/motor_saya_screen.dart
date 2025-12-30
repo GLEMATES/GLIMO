@@ -12,11 +12,6 @@ class MotorSayaScreen extends ConsumerWidget {
   const MotorSayaScreen({super.key});
 
   void _showMotorSwitcher(BuildContext context, WidgetRef ref) {
-    final motors = ref.read(motorListProvider);
-    final subscriptionStatus = ref.read(subscriptionStatusProvider);
-    final isPremium = subscriptionStatus.isActive;
-    final canActivateTrial = ref.read(subscriptionStatusProvider.notifier).canActivateTrial();
-
     showModalBottomSheet(
       context: context,
       backgroundColor: AppColors.neutral0,
@@ -24,10 +19,18 @@ class MotorSayaScreen extends ConsumerWidget {
         borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
       builder: (BuildContext context) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.l),
-            child: SingleChildScrollView(
+        // Use Consumer to make modal reactive to subscription changes
+        return Consumer(
+          builder: (context, ref, child) {
+            final motors = ref.watch(motorListProvider);
+            final subscriptionStatus = ref.watch(subscriptionStatusProvider);
+            final isPremium = subscriptionStatus.isPremium;
+            final canActivateTrial = ref.read(subscriptionStatusProvider.notifier).canActivateTrial();
+
+            return SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.l),
+                child: SingleChildScrollView(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -163,10 +166,12 @@ class MotorSayaScreen extends ConsumerWidget {
                     }
                   },
                 ),
-              ],
+                ],
+                  ),
+                ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
@@ -251,7 +256,7 @@ class MotorSayaScreen extends ConsumerWidget {
     final motors = ref.watch(motorListProvider);
     final activeMotor = ref.read(motorListProvider.notifier).getActiveMotor();
     final subscriptionStatus = ref.watch(subscriptionStatusProvider);
-    final isPremium = subscriptionStatus.isActive;
+    final isPremium = subscriptionStatus.isPremium;
 
     return Scaffold(
       appBar: AppBar(

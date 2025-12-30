@@ -126,6 +126,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     });
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: Stack(
         children: [
           _buildHeader(),
@@ -277,6 +278,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                 ),
+                const SizedBox(height: 300),
               ],
             ),
           ),

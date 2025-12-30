@@ -6,6 +6,7 @@ import '../../providers/motor_list_provider.dart';
 import '../../themes/app_colors.dart';
 import '../../themes/app_spacing.dart';
 import '../../themes/app_typography.dart';
+import '../../utils/user_category_data.dart';
 
 class AnalisisPenggunaanScreen extends ConsumerStatefulWidget {
   const AnalisisPenggunaanScreen({super.key});
@@ -121,6 +122,8 @@ class _AnalisisPenggunaanScreenState extends ConsumerState<AnalisisPenggunaanScr
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildClusteringInfoBanner(analytics),
+          const SizedBox(height: AppSpacing.l),
           _buildHeaderCard(analytics, activeMotor),
           const SizedBox(height: AppSpacing.l),
           _buildCategoryCard(analytics),
@@ -133,6 +136,46 @@ class _AnalisisPenggunaanScreenState extends ConsumerState<AnalisisPenggunaanScr
           const SizedBox(height: AppSpacing.l),
           _buildInsightsCard(analytics),
           const SizedBox(height: AppSpacing.xxl),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildClusteringInfoBanner(UsageAnalytics analytics) {
+    final isKMeans = analytics.isUsingKMeans;
+    final totalUsers = analytics.totalUsersInCluster;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(AppSpacing.m),
+      decoration: BoxDecoration(
+        color: isKMeans ? Colors.green.shade50 : Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isKMeans ? Colors.green.shade200 : Colors.orange.shade200,
+          width: 2,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            isKMeans ? Icons.verified : Icons.info_outline,
+            color: isKMeans ? Colors.green.shade700 : Colors.orange.shade700,
+            size: 20,
+          ),
+          const SizedBox(width: AppSpacing.m),
+          Expanded(
+            child: Text(
+              isKMeans
+                  ? 'Kategori ditentukan dengan K-Means clustering berdasarkan data $totalUsers pengguna real'
+                  : 'Kategori menggunakan analisis sederhana (data user: $totalUsers). K-Means clustering akan aktif setelah ≥30 pengguna',
+              style: AppTypography.bodySmall.copyWith(
+                color: isKMeans ? Colors.green.shade900 : Colors.orange.shade900,
+                fontSize: 11,
+              ),
+              textAlign: TextAlign.justify,
+            ),
+          ),
         ],
       ),
     );
@@ -214,6 +257,7 @@ class _AnalisisPenggunaanScreenState extends ConsumerState<AnalisisPenggunaanScr
             style: AppTypography.bodyMedium.copyWith(
               color: AppColors.neutral0.withValues(alpha: 0.9),
             ),
+            textAlign: TextAlign.justify,
           ),
         ],
       ),
@@ -257,10 +301,10 @@ class _AnalisisPenggunaanScreenState extends ConsumerState<AnalisisPenggunaanScr
               PieChartData(
                 sections: [
                   PieChartSectionData(
-                    value: analytics.category == UsageCategory.light ? 100 : 25,
+                    value: analytics.category == UserCategory.light ? 100 : 25,
                     title: 'Light\n<500 km',
                     color: Colors.green,
-                    radius: analytics.category == UsageCategory.light ? 80 : 70,
+                    radius: analytics.category == UserCategory.light ? 80 : 70,
                     titleStyle: AppTypography.bodySmall.copyWith(
                       color: AppColors.neutral0,
                       fontWeight: FontWeight.bold,
@@ -269,10 +313,10 @@ class _AnalisisPenggunaanScreenState extends ConsumerState<AnalisisPenggunaanScr
                     titlePositionPercentageOffset: 0.6,
                   ),
                   PieChartSectionData(
-                    value: analytics.category == UsageCategory.medium ? 100 : 25,
+                    value: analytics.category == UserCategory.medium ? 100 : 25,
                     title: 'Medium\n500-1500',
                     color: Colors.orange,
-                    radius: analytics.category == UsageCategory.medium ? 80 : 70,
+                    radius: analytics.category == UserCategory.medium ? 80 : 70,
                     titleStyle: AppTypography.bodySmall.copyWith(
                       color: AppColors.neutral0,
                       fontWeight: FontWeight.bold,
@@ -281,10 +325,10 @@ class _AnalisisPenggunaanScreenState extends ConsumerState<AnalisisPenggunaanScr
                     titlePositionPercentageOffset: 0.6,
                   ),
                   PieChartSectionData(
-                    value: analytics.category == UsageCategory.heavy ? 100 : 25,
+                    value: analytics.category == UserCategory.heavy ? 100 : 25,
                     title: 'Heavy\n>1500 km',
                     color: Colors.red,
-                    radius: analytics.category == UsageCategory.heavy ? 80 : 70,
+                    radius: analytics.category == UserCategory.heavy ? 80 : 70,
                     titleStyle: AppTypography.bodySmall.copyWith(
                       color: AppColors.neutral0,
                       fontWeight: FontWeight.bold,
@@ -782,6 +826,7 @@ class _AnalisisPenggunaanScreenState extends ConsumerState<AnalisisPenggunaanScr
                     style: AppTypography.bodyMedium.copyWith(
                       color: Colors.blue,
                     ),
+                    textAlign: TextAlign.justify,
                   ),
                 ),
               ],
@@ -838,24 +883,25 @@ class _AnalisisPenggunaanScreenState extends ConsumerState<AnalisisPenggunaanScr
     );
   }
 
-  Map<String, dynamic> _getCategoryInfo(UsageCategory category) {
+  Map<String, dynamic> _getCategoryInfo(UserCategory category) {
+    final info = UserCategoryInfo.getInfo(category);
     switch (category) {
-      case UsageCategory.light:
+      case UserCategory.light:
         return {
-          'label': 'Light',
-          'description': 'Penggunaan santai, ideal untuk efisiensi bahan bakar',
+          'label': info.label,
+          'description': info.description,
           'colors': [Colors.green.shade400, Colors.green.shade600],
         };
-      case UsageCategory.medium:
+      case UserCategory.medium:
         return {
-          'label': 'Medium',
-          'description': 'Penggunaan seimbang untuk commuter harian',
+          'label': info.label,
+          'description': info.description,
           'colors': [Colors.orange.shade400, Colors.orange.shade600],
         };
-      case UsageCategory.heavy:
+      case UserCategory.heavy:
         return {
-          'label': 'Heavy',
-          'description': 'Penggunaan intensif, perhatikan perawatan ekstra',
+          'label': info.label,
+          'description': info.description,
           'colors': [Colors.red.shade400, Colors.red.shade600],
         };
     }

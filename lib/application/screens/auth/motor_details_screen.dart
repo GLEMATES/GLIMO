@@ -1,12 +1,9 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/motor_details_provider.dart';
 import '../../providers/motor_list_provider.dart';
-import '../../providers/auth_provider.dart';
-import '../../providers/service_history_provider.dart';
 import '../../themes/app_colors.dart';
 import '../../themes/app_spacing.dart';
 import '../../themes/app_typography.dart';
@@ -41,148 +38,6 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
         ref.read(motorDetailsProvider.notifier).setModel(motor.model);
         ref.read(motorDetailsProvider.notifier).setType(motor.type);
         ref.read(motorDetailsProvider.notifier).setOdometer(motor.odometer);
-      }
-    });
-  }
-
-  DateTime _estimatePurchaseDateFromOdometer(
-    int currentOdometer,
-    Map<String, dynamic> serviceSchedule,
-  ) {
-    final services = (serviceSchedule['services'] as List?)?.map((service) {
-      return service as Map<String, dynamic>;
-    }).toList() ?? [];
-
-    if (services.isEmpty) {
-      return DateTime.now();
-    }
-
-    final List<MapEntry<int, int>> milestones = [];
-
-    for (var service in services) {
-      final schedule = service['schedule'] as Map<String, dynamic>?;
-      if (schedule != null) {
-        schedule.forEach((key, value) {
-          if (value is Map<String, dynamic>) {
-            final km = value['km'] as int?;
-            final months = value['months'] as int?;
-            if (km != null && months != null) {
-              milestones.add(MapEntry(km, months));
-            }
-          }
-        });
-      }
-    }
-
-    milestones.sort((a, b) => a.key.compareTo(b.key));
-
-    if (milestones.isEmpty) {
-      return DateTime.now();
-    }
-
-    MapEntry<int, int>? previousMilestone;
-    MapEntry<int, int>? nextMilestone;
-
-    for (var milestone in milestones) {
-      if (currentOdometer >= milestone.key) {
-        previousMilestone = milestone;
-      } else {
-        nextMilestone = milestone;
-        break;
-      }
-    }
-
-    double estimatedMonths;
-
-    if (previousMilestone == null) {
-      estimatedMonths = 0;
-    } else if (nextMilestone == null) {
-      estimatedMonths = previousMilestone.value.toDouble();
-    } else {
-      final kmRange = nextMilestone.key - previousMilestone.key;
-      final monthsRange = nextMilestone.value - previousMilestone.value;
-      final kmProgress = currentOdometer - previousMilestone.key;
-
-      final progressRatio = kmRange > 0 ? kmProgress / kmRange : 0.0;
-
-      estimatedMonths = previousMilestone.value + (progressRatio * monthsRange);
-    }
-
-    final estimatedDays = (estimatedMonths * 30).round();
-
-    return DateTime.now().subtract(Duration(days: estimatedDays));
-  }
-
-  void _autoGeneratePastServicesInBackground(
-    String model,
-    String type,
-    String odometer,
-  ) {
-    Future.microtask(() async {
-      try {
-        final currentOdometer = int.tryParse(odometer) ?? 0;
-
-        if (currentOdometer < 1000) {
-          return;
-        }
-
-        final firestore = FirebaseFirestore.instance;
-        final motorModel = model.toLowerCase();
-
-        if (motorModel.isEmpty) {
-          return;
-        }
-
-        final snapshot = await firestore.collection('motors').get().timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            throw TimeoutException('Timeout fetching service schedule');
-          },
-        );
-
-        Map<String, dynamic>? serviceSchedule;
-
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
-          final category = (data['category'] as String?)?.toLowerCase() ?? '';
-          final motorName = (data['motor_name'] as String?)?.toLowerCase() ?? '';
-
-          if (category == motorModel ||
-              motorName.contains(motorModel) ||
-              motorModel.contains(motorName.split(',')[0].trim())) {
-            serviceSchedule = data;
-            break;
-          }
-        }
-
-        if (serviceSchedule == null) {
-          return;
-        }
-
-        final motors = ref.read(motorListProvider);
-        final newMotor = motors.firstWhere(
-          (m) => m.model == model && m.type == type,
-        );
-
-        final estimatedPurchaseDate = _estimatePurchaseDateFromOdometer(
-          currentOdometer,
-          serviceSchedule,
-        );
-
-        await ref.read(serviceHistoryProvider.notifier).autoGeneratePastServices(
-              motorId: newMotor.id,
-              motorName: '${newMotor.model} - ${newMotor.type}',
-              currentOdometer: currentOdometer,
-              motorPurchaseDate: estimatedPurchaseDate,
-              serviceSchedule: serviceSchedule,
-            ).timeout(
-          const Duration(seconds: 15),
-          onTimeout: () {
-            throw TimeoutException('Timeout auto-generating service history');
-          },
-        );
-      } on TimeoutException catch (_) {
-      } catch (_) {
       }
     });
   }
@@ -264,30 +119,7 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                       }
 
                       try {
-                        final firestore = FirebaseFirestore.instance;
-                        final motorModel = savedModel.toLowerCase();
-                        final snapshot = await firestore.collection('motors').get();
-
-                        Map<String, dynamic>? serviceSchedule;
-                        for (var doc in snapshot.docs) {
-                          final data = doc.data();
-                          final category = (data['category'] as String?)?.toLowerCase() ?? '';
-                          final motorName = (data['motor_name'] as String?)?.toLowerCase() ?? '';
-
-                          if (category == motorModel ||
-                              motorName.contains(motorModel) ||
-                              motorModel.contains(motorName.split(',')[0].trim())) {
-                            serviceSchedule = data;
-                            break;
-                          }
-                        }
-
-                        final estimatedPurchaseDate = serviceSchedule != null
-                            ? _estimatePurchaseDateFromOdometer(
-                                int.tryParse(savedOdometer) ?? 0,
-                                serviceSchedule,
-                              )
-                            : DateTime.now();
+                        final estimatedPurchaseDate = DateTime.now();
 
                         if (savedFrom == 'motor-saya') {
                           if (savedEditMotorId != null) {
@@ -296,6 +128,11 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                   savedModel,
                                   savedType,
                                   savedOdometer,
+                                ).timeout(
+                                  const Duration(seconds: 10),
+                                  onTimeout: () {
+                                    throw Exception('Timeout saat menyimpan motor');
+                                  },
                                 );
                           } else {
                             await ref.read(motorListProvider.notifier).addMotor(
@@ -303,23 +140,12 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                   savedType,
                                   savedOdometer,
                                   estimatedPurchaseDate,
+                                ).timeout(
+                                  const Duration(seconds: 10),
+                                  onTimeout: () {
+                                    throw Exception('Timeout saat menyimpan motor');
+                                  },
                                 );
-
-                            if (context.mounted) {
-                              Navigator.of(context, rootNavigator: true).pop();
-                            }
-
-                            _autoGeneratePastServicesInBackground(
-                              savedModel,
-                              savedType,
-                              savedOdometer,
-                            );
-
-                            if (context.mounted) {
-                              ref.read(motorDetailsProvider.notifier).clearAll();
-                              context.pop();
-                            }
-                            return;
                           }
 
                           if (context.mounted) {
@@ -336,22 +162,29 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                 savedType,
                                 savedOdometer,
                                 estimatedPurchaseDate,
+                              ).timeout(
+                                const Duration(seconds: 10),
+                                onTimeout: () {
+                                  throw Exception('Timeout saat menyimpan motor');
+                                },
                               );
 
                           if (context.mounted) {
                             Navigator.of(context, rootNavigator: true).pop();
                           }
 
-                          _autoGeneratePastServicesInBackground(
-                            savedModel,
-                            savedType,
-                            savedOdometer,
-                          );
+                          // Clear motor_filled flag to prevent loop
+                          final prefs = await SharedPreferences.getInstance();
+                          await prefs.remove('motor_filled');
 
-                          await ref.read(authStateProvider.notifier).logout();
-
+                          // Clear form
                           if (context.mounted) {
-                            context.go('/login');
+                            ref.read(motorDetailsProvider.notifier).clearAll();
+                          }
+
+                          // Navigate to beranda - user stays logged in
+                          if (context.mounted) {
+                            context.go('/beranda');
                           }
                         }
                       } catch (e) {
@@ -525,6 +358,8 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
       context: context,
       builder: (BuildContext context) {
         return AlertDialog(
+          insetPadding: const EdgeInsets.symmetric(horizontal: 24.0, vertical: 80.0),
+          contentPadding: const EdgeInsets.fromLTRB(24.0, 20.0, 24.0, 0),
           title: Text(
             'Masukkan Odometer',
             style: AppTypography.titleMedium.copyWith(fontWeight: FontWeight.bold),
@@ -535,7 +370,6 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
             autofocus: true,
             decoration: const InputDecoration(
               hintText: 'Misal: 11722',
-              helperText: 'Masukkan odometer yang tertera di motor Anda',
             ),
           ),
           actionsPadding: const EdgeInsets.only(bottom: AppSpacing.l, right: AppSpacing.l),
