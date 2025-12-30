@@ -1,141 +1,324 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../domain/models/notification_model.dart';
 
-/// Repository for managing notification persistence
-///
-/// Stores notifications in SharedPreferences as JSON
-/// Max 100 notifications kept (auto-delete oldest when exceeded)
 class NotificationRepository {
   static const String _key = 'glimo_notifications';
   static const int _maxNotifications = 100;
 
-  /// Get all notifications (sorted by timestamp, newest first)
+  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+
   Future<List<NotificationModel>> getAllNotifications() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final String? jsonString = prefs.getString(_key);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return [];
 
-      if (jsonString == null || jsonString.isEmpty) {
-        return [];
-      }
+      await _migrateFromLocalToFirestore();
 
-      final List<dynamic> jsonList = json.decode(jsonString);
-      final notifications = jsonList
-          .map((json) => NotificationModel.fromJson(json as Map<String, dynamic>))
-          .toList();
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .orderBy('timestamp', descending: true)
+          .limit(_maxNotifications)
+          .get();
 
-      // Sort by timestamp (newest first)
-      notifications.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-
-      return notifications;
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return NotificationModel(
+          id: doc.id,
+          category: data['category'] ?? '',
+          title: data['title'] ?? '',
+          description: data['description'] ?? '',
+          timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          isRead: data['isRead'] ?? false,
+          payload: data['payload'],
+        );
+      }).toList();
     } catch (e) {
       debugPrint('❌ Error loading notifications: $e');
       return [];
     }
   }
 
-  /// Get notifications by category ("service" or "general")
-  Future<List<NotificationModel>> getNotificationsByCategory(String category) async {
-    final allNotifications = await getAllNotifications();
-    return allNotifications.where((n) => n.category == category).toList();
+  Stream<List<NotificationModel>> getNotificationsStream() {
+    final user = FirebaseAuth.instance.currentUser;
+    if (user == null) return Stream.value([]);
+
+    return _firestore
+        .collection('users')
+        .doc(user.uid)
+        .collection('notifications')
+        .orderBy('timestamp', descending: true)
+        .limit(_maxNotifications)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return NotificationModel(
+          id: doc.id,
+          category: data['category'] ?? '',
+          title: data['title'] ?? '',
+          description: data['description'] ?? '',
+          timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          isRead: data['isRead'] ?? false,
+          payload: data['payload'],
+        );
+      }).toList();
+    });
   }
 
-  /// Add a new notification
+  Future<List<NotificationModel>> getNotificationsByCategory(String category) async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return [];
+
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .where('category', isEqualTo: category)
+          .orderBy('timestamp', descending: true)
+          .limit(_maxNotifications)
+          .get();
+
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        return NotificationModel(
+          id: doc.id,
+          category: data['category'] ?? '',
+          title: data['title'] ?? '',
+          description: data['description'] ?? '',
+          timestamp: (data['timestamp'] as Timestamp?)?.toDate() ?? DateTime.now(),
+          isRead: data['isRead'] ?? false,
+          payload: data['payload'],
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('❌ Error loading notifications by category: $e');
+      return [];
+    }
+  }
+
   Future<void> addNotification(NotificationModel notification) async {
     try {
-      final notifications = await getAllNotifications();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
 
-      // Add new notification at the beginning
-      notifications.insert(0, notification);
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .doc(notification.id)
+          .set({
+        'category': notification.category,
+        'title': notification.title,
+        'description': notification.description,
+        'timestamp': Timestamp.fromDate(notification.timestamp),
+        'isRead': notification.isRead,
+        'payload': notification.payload,
+      });
 
-      // Keep only max notifications (delete oldest)
-      if (notifications.length > _maxNotifications) {
-        notifications.removeRange(_maxNotifications, notifications.length);
-      }
-
-      await _saveNotifications(notifications);
+      await _cleanupOldNotifications();
       debugPrint('✅ Notification saved: ${notification.title}');
     } catch (e) {
       debugPrint('❌ Error saving notification: $e');
     }
   }
 
-  /// Mark notification as read by ID
   Future<void> markAsRead(String id) async {
     try {
-      final notifications = await getAllNotifications();
-      final index = notifications.indexWhere((n) => n.id == id);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
 
-      if (index != -1) {
-        notifications[index] = notifications[index].copyWith(isRead: true);
-        await _saveNotifications(notifications);
-        debugPrint('✅ Marked notification as read: $id');
-      }
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .doc(id)
+          .update({'isRead': true});
+
+      debugPrint('✅ Marked notification as read: $id');
     } catch (e) {
       debugPrint('❌ Error marking notification as read: $e');
     }
   }
 
-  /// Mark all notifications in category as read
   Future<void> markAllAsRead(String category) async {
     try {
-      final notifications = await getAllNotifications();
-      final updatedNotifications = notifications.map((n) {
-        if (n.category == category && !n.isRead) {
-          return n.copyWith(isRead: true);
-        }
-        return n;
-      }).toList();
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
 
-      await _saveNotifications(updatedNotifications);
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .where('category', isEqualTo: category)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      final batch = _firestore.batch();
+      for (var doc in snapshot.docs) {
+        batch.update(doc.reference, {'isRead': true});
+      }
+      await batch.commit();
+
       debugPrint('✅ Marked all $category notifications as read');
     } catch (e) {
       debugPrint('❌ Error marking all as read: $e');
     }
   }
 
-  /// Get unread count for a category
   Future<int> getUnreadCount(String category) async {
-    final notifications = await getNotificationsByCategory(category);
-    return notifications.where((n) => !n.isRead).length;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return 0;
+
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .where('category', isEqualTo: category)
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      return snapshot.docs.length;
+    } catch (e) {
+      debugPrint('❌ Error getting unread count: $e');
+      return 0;
+    }
   }
 
-  /// Get total unread count (all categories)
   Future<int> getTotalUnreadCount() async {
-    final notifications = await getAllNotifications();
-    return notifications.where((n) => !n.isRead).length;
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return 0;
+
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .where('isRead', isEqualTo: false)
+          .get();
+
+      return snapshot.docs.length;
+    } catch (e) {
+      debugPrint('❌ Error getting total unread count: $e');
+      return 0;
+    }
   }
 
-  /// Delete notification by ID
   Future<void> deleteNotification(String id) async {
     try {
-      final notifications = await getAllNotifications();
-      notifications.removeWhere((n) => n.id == id);
-      await _saveNotifications(notifications);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .doc(id)
+          .delete();
+
       debugPrint('✅ Deleted notification: $id');
     } catch (e) {
       debugPrint('❌ Error deleting notification: $e');
     }
   }
 
-  /// Clear all notifications
   Future<void> clearAllNotifications() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove(_key);
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .get();
+
+      final batch = _firestore.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+
       debugPrint('✅ Cleared all notifications');
     } catch (e) {
       debugPrint('❌ Error clearing notifications: $e');
     }
   }
 
-  /// Save notifications to SharedPreferences
-  Future<void> _saveNotifications(List<NotificationModel> notifications) async {
-    final prefs = await SharedPreferences.getInstance();
-    final jsonList = notifications.map((n) => n.toJson()).toList();
-    final jsonString = json.encode(jsonList);
-    await prefs.setString(_key, jsonString);
+  Future<void> _migrateFromLocalToFirestore() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      final jsonString = prefs.getString(_key);
+
+      if (jsonString != null && jsonString.isNotEmpty) {
+        final List<dynamic> jsonList = json.decode(jsonString);
+        final localNotifications = jsonList
+            .map((json) => NotificationModel.fromJson(json as Map<String, dynamic>))
+            .toList();
+
+        if (localNotifications.isEmpty) {
+          await prefs.remove(_key);
+          return;
+        }
+
+        final batch = _firestore.batch();
+        for (var notification in localNotifications) {
+          final docRef = _firestore
+              .collection('users')
+              .doc(user.uid)
+              .collection('notifications')
+              .doc(notification.id);
+
+          batch.set(docRef, {
+            'category': notification.category,
+            'title': notification.title,
+            'description': notification.description,
+            'timestamp': Timestamp.fromDate(notification.timestamp),
+            'isRead': notification.isRead,
+            'payload': notification.payload,
+          });
+        }
+
+        await batch.commit();
+        await prefs.remove(_key);
+        debugPrint('✅ Migrated ${localNotifications.length} notifications to Firestore');
+      }
+    } catch (e) {
+      debugPrint('❌ Error migrating notifications: $e');
+    }
+  }
+
+  Future<void> _cleanupOldNotifications() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return;
+
+      final snapshot = await _firestore
+          .collection('users')
+          .doc(user.uid)
+          .collection('notifications')
+          .orderBy('timestamp', descending: true)
+          .get();
+
+      if (snapshot.docs.length > _maxNotifications) {
+        final batch = _firestore.batch();
+        for (var i = _maxNotifications; i < snapshot.docs.length; i++) {
+          batch.delete(snapshot.docs[i].reference);
+        }
+        await batch.commit();
+      }
+    } catch (e) {
+      debugPrint('❌ Error cleaning up notifications: $e');
+    }
   }
 }

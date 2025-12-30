@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:in_app_purchase/in_app_purchase.dart';
+import 'package:in_app_purchase_android/in_app_purchase_android.dart';
 
 class PaymentService {
   static final PaymentService _instance = PaymentService._internal();
@@ -12,6 +14,9 @@ class PaymentService {
 
   static const String monthlyProductId = 'glimo_premium_monthly';
   static const String yearlyProductId = 'glimo_premium_yearly';
+
+  // Demo mode untuk testing/presentasi tanpa Google Play setup
+  static const bool _demoMode = false; // Set false saat production
 
   final List<String> _productIds = [
     monthlyProductId,
@@ -25,38 +30,46 @@ class PaymentService {
   bool get isAvailable => _isAvailable;
 
   Future<void> initialize() async {
-    _isAvailable = await _iap.isAvailable();
+    try {
+      _isAvailable = await _iap.isAvailable();
 
-    if (!_isAvailable) {
-      debugPrint('In-App Purchase not available');
-      return;
+      if (!_isAvailable) {
+        if (kDebugMode) debugPrint('⚠️ [Payment] In-App Purchase not available');
+        return;
+      }
+
+      await _loadProducts();
+
+      final purchaseUpdatedStream = _iap.purchaseStream;
+      _subscription = purchaseUpdatedStream.listen(
+        _onPurchaseUpdate,
+        onDone: _onPurchaseDone,
+        onError: _onPurchaseError,
+      );
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Payment] Error initializing: $e');
+      _isAvailable = false;
     }
-
-
-    await _loadProducts();
-
-    final purchaseUpdatedStream = _iap.purchaseStream;
-    _subscription = purchaseUpdatedStream.listen(
-      _onPurchaseUpdate,
-      onDone: _onPurchaseDone,
-      onError: _onPurchaseError,
-    );
   }
 
   Future<void> _loadProducts() async {
-    final ProductDetailsResponse response = await _iap.queryProductDetails(_productIds.toSet());
+    try {
+      final ProductDetailsResponse response = await _iap.queryProductDetails(_productIds.toSet());
 
-    if (response.notFoundIDs.isNotEmpty) {
-      debugPrint('Products not found: ${response.notFoundIDs}');
+      if (response.notFoundIDs.isNotEmpty && kDebugMode) {
+        debugPrint('⚠️ [Payment] Products not found: ${response.notFoundIDs}');
+      }
+
+      if (response.error != null) {
+        if (kDebugMode) debugPrint('❌ [Payment] Error loading products: ${response.error}');
+        return;
+      }
+
+      _products = response.productDetails;
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Payment] Error in _loadProducts: $e');
+      _products = [];
     }
-
-    if (response.error != null) {
-      debugPrint('Error loading products: ${response.error}');
-      return;
-    }
-
-    _products = response.productDetails;
-    debugPrint('Loaded ${_products.length} products');
   }
 
   ProductDetails? getProduct(String productId) {
@@ -68,14 +81,21 @@ class PaymentService {
   }
 
   Future<bool> purchaseSubscription(String productId) async {
+    // Demo mode: bypass Google Play untuk testing/presentasi
+    if (_demoMode) {
+      if (kDebugMode) debugPrint('🎮 DEMO MODE: Simulating purchase for $productId');
+      await Future.delayed(const Duration(seconds: 1));
+      return true;
+    }
+
     if (!_isAvailable) {
-      debugPrint('In-App Purchase not available');
+      if (kDebugMode) debugPrint('❌ [Payment] In-App Purchase not available');
       return false;
     }
 
     final product = getProduct(productId);
     if (product == null) {
-      debugPrint('Product not found: $productId');
+      if (kDebugMode) debugPrint('❌ [Payment] Product not found: $productId');
       return false;
     }
 
@@ -87,23 +107,51 @@ class PaymentService {
       final bool success = await _iap.buyNonConsumable(purchaseParam: purchaseParam);
       return success;
     } catch (e) {
-      debugPrint('Error purchasing: $e');
+      if (kDebugMode) debugPrint('❌ [Payment] Error purchasing: $e');
       return false;
     }
   }
 
-  Future<void> restorePurchases() async {
+  Future<List<PurchaseDetails>> restorePurchases() async {
     if (!_isAvailable) {
-      debugPrint('In-App Purchase not available');
-      return;
+      throw Exception('In-App Purchase not available');
     }
 
     try {
-      await _iap.restorePurchases();
-    } catch (e) {
-      debugPrint('Error restoring purchases: $e');
+      if (Platform.isAndroid) {
+        final androidAddition = _iap.getPlatformAddition<InAppPurchaseAndroidPlatformAddition>();
+        final response = await androidAddition.queryPastPurchases();
+
+        final activePurchases = <PurchaseDetails>[];
+
+        for (var purchase in response.pastPurchases) {
+          if (purchase.status == PurchaseStatus.purchased ||
+              purchase.status == PurchaseStatus.restored) {
+            activePurchases.add(purchase);
+          }
+        }
+
+        return activePurchases;
+      } else {
+        await _iap.restorePurchases();
+        return [];
+      }
+    } catch (e, stackTrace) {
+      if (kDebugMode) {
+        debugPrint('❌ [Payment] Error restoring purchases: $e');
+        debugPrint('   Stack: $stackTrace');
+      }
+      rethrow;
     }
   }
+
+  // Callback untuk status purchase
+  Function(PurchaseDetails)? onPurchaseSuccess;
+  Function(String)? onPurchaseError;
+  Function()? onPurchaseCanceled;
+
+  // Track completed purchases to prevent duplicate processing
+  final Set<String> _completedPurchaseIds = <String>{};
 
   void _onPurchaseUpdate(List<PurchaseDetails> purchaseDetailsList) async {
     for (final purchaseDetails in purchaseDetailsList) {
@@ -112,32 +160,78 @@ class PaymentService {
   }
 
   Future<void> _handlePurchase(PurchaseDetails purchaseDetails) async {
-    if (purchaseDetails.status == PurchaseStatus.purchased ||
-        purchaseDetails.status == PurchaseStatus.restored) {
-      debugPrint('Purchase successful: ${purchaseDetails.productID}');
-    } else if (purchaseDetails.status == PurchaseStatus.error) {
-      debugPrint('Purchase error: ${purchaseDetails.error}');
-    } else if (purchaseDetails.status == PurchaseStatus.canceled) {
-      debugPrint('Purchase canceled');
-    }
+    final purchaseId = purchaseDetails.purchaseID ?? purchaseDetails.productID;
 
-    if (purchaseDetails.pendingCompletePurchase) {
-      await _iap.completePurchase(purchaseDetails);
+    try {
+      // Skip if already processed to prevent duplicate callbacks
+      if (_completedPurchaseIds.contains(purchaseId)) {
+        return;
+      }
+
+      if (purchaseDetails.status == PurchaseStatus.pending) {
+        return;
+      }
+
+      if (purchaseDetails.status == PurchaseStatus.purchased ||
+          purchaseDetails.status == PurchaseStatus.restored) {
+        // Complete purchase BEFORE calling success callback
+        if (purchaseDetails.pendingCompletePurchase) {
+          await _iap.completePurchase(purchaseDetails);
+        }
+
+        _completedPurchaseIds.add(purchaseId);
+        onPurchaseSuccess?.call(purchaseDetails);
+      } else if (purchaseDetails.status == PurchaseStatus.error) {
+        final errorMessage = purchaseDetails.error?.message ?? 'Unknown error';
+
+        if (purchaseDetails.pendingCompletePurchase) {
+          await _iap.completePurchase(purchaseDetails);
+        }
+
+        _completedPurchaseIds.add(purchaseId);
+        onPurchaseError?.call(errorMessage);
+      } else if (purchaseDetails.status == PurchaseStatus.canceled) {
+        if (purchaseDetails.pendingCompletePurchase) {
+          await _iap.completePurchase(purchaseDetails);
+        }
+
+        _completedPurchaseIds.add(purchaseId);
+        onPurchaseCanceled?.call();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('❌ [Payment] Error in _handlePurchase: $e');
+      _completedPurchaseIds.add(purchaseId);
+
+      if (purchaseDetails.pendingCompletePurchase) {
+        try {
+          await _iap.completePurchase(purchaseDetails);
+        } catch (completeError) {
+          if (kDebugMode) debugPrint('❌ [Payment] Error completing purchase: $completeError');
+        }
+      }
     }
   }
 
   void _onPurchaseDone() {
-    debugPrint('Purchase stream done');
+    if (kDebugMode) debugPrint('Purchase stream done');
   }
 
   void _onPurchaseError(dynamic error) {
-    debugPrint('Purchase stream error: $error');
+    if (kDebugMode) debugPrint('Purchase stream error: $error');
   }
 
   String getPrice(String productId) {
+    // Demo mode: return mock prices
+    if (_demoMode) {
+      if (productId == monthlyProductId) return 'Rp 25.000';
+      if (productId == yearlyProductId) return 'Rp 215.000';
+    }
+
     final product = getProduct(productId);
     return product?.price ?? 'N/A';
   }
+
+  bool get isDemoMode => _demoMode;
 
   void dispose() {
     _subscription?.cancel();

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -7,9 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 import 'application/services/background_tracking_service.dart';
 import 'application/services/notification_service.dart';
+import 'application/services/payment_service.dart';
 import 'application/utils/navigation_helper.dart';
 import 'application/providers/auth_provider.dart';
 import 'application/providers/auth_state.dart';
+import 'application/providers/subscription_status_provider.dart';
 import 'application/screens/auth/login_screen.dart';
 import 'application/screens/auth/motor_details_screen.dart';
 import 'application/screens/auth/motor_model_screen.dart';
@@ -28,6 +31,7 @@ import 'application/screens/home/riwayat_screen.dart';
 import 'application/screens/home/current_location_screen.dart';
 import 'application/screens/home/tentang_aplikasi_screen.dart';
 import 'application/screens/home/analisis_penggunaan_screen.dart';
+import 'application/screens/home/analisis_penggunaan_v2_screen.dart';
 import 'application/screens/home/motor_saya_screen.dart';
 import 'application/screens/home/ubah_password_screen.dart';
 import 'application/screens/home/ubah_password_form_screen.dart';
@@ -53,13 +57,43 @@ final authChangeNotifier = ValueNotifier<int>(0);
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // Initialize Firebase with error handling to prevent crash on restart
+  try {
+    debugPrint('🔥 [Main] Initializing Firebase...');
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint('✅ [Main] Firebase initialized successfully');
+  } catch (e) {
+    debugPrint('⚠️ [Main] Firebase already initialized or error: $e');
+    // Firebase might already be initialized - this is OK
+  }
 
   await BackgroundTrackingService.initialize();
 
   await NotificationService().initialize();
+
+  // Initialize payment service with proper error handling
+  try {
+    debugPrint('🔧 [Payment] Initializing PaymentService...');
+
+    // Add timeout to prevent hanging during initialization
+    await PaymentService().initialize().timeout(
+      const Duration(seconds: 15),
+      onTimeout: () {
+        debugPrint('⏱️ [Payment] Initialization timeout after 15 seconds');
+        throw TimeoutException('PaymentService initialization timeout');
+      },
+    );
+
+    debugPrint('✅ [Payment] PaymentService initialized successfully');
+  } catch (e, stackTrace) {
+    debugPrint('❌ [Payment] PaymentService initialization failed: $e');
+    debugPrint('   Stack: $stackTrace');
+    debugPrint('   App will continue without payment features');
+    debugPrint('   This is safe - payment features will be disabled');
+    // Don't rethrow - let app continue without payment
+  }
 
   // Initialize navigation helper with global navigator key
   NavigationHelper.initialize(navigatorKey);
@@ -99,6 +133,37 @@ class _GlemoAppState extends ConsumerState<GlemoApp> {
     ref.listen<AuthState>(authStateProvider, (previous, next) {
       // Increment counter to trigger router refresh
       authChangeNotifier.value++;
+
+      // Load subscription status and check expiry when user logs in
+      next.whenOrNull(
+        authenticated: (user) async {
+          // Add safety wrapper to prevent crash
+          try {
+            debugPrint('👤 [Auth] User logged in, loading subscription...');
+
+            // First, load from Firestore
+            await ref.read(subscriptionStatusProvider.notifier).loadSubscriptionStatus();
+
+            final status = ref.read(subscriptionStatusProvider);
+            debugPrint('📊 [Auth] Loaded subscription: isPremium=${status.isPremium}, isActive=${status.isActive}');
+
+            // REMOVED: Auto-restore on cold start (causes crash)
+            // Instead, we'll do deferred restore after user reaches beranda
+            // This prevents race condition with payment service initialization
+
+            // Check expiry only (safe operation)
+            try {
+              await ref.read(subscriptionStatusProvider.notifier).checkAndHandleExpiry();
+            } catch (expiryError) {
+              debugPrint('⚠️ [Auth] Error checking expiry: $expiryError');
+            }
+          } catch (e, stackTrace) {
+            debugPrint('❌ [Auth] CRITICAL: Failed subscription load: $e');
+            debugPrint('   Stack: $stackTrace');
+            // Don't crash - just log error
+          }
+        },
+      );
     });
 
     return MaterialApp.router(
@@ -368,6 +433,13 @@ GoRouter _createRouter(WidgetRef ref) {
         name: 'analisis-penggunaan',
         pageBuilder: (context, state) => _buildPageWithSlideTransition(
           child: const AnalisisPenggunaanScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/kmeans-demo',
+        name: 'kmeans-demo',
+        pageBuilder: (context, state) => _buildPageWithSlideTransition(
+          child: const AnalisisPenggunaanV2Screen(),
         ),
       ),
       GoRoute(
