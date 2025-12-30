@@ -17,6 +17,14 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+
+    // Force Google Play Services versions to prevent dependency conflicts
+    configurations.all {
+        resolutionStrategy {
+            force("com.google.android.gms:play-services-location:21.3.0")
+            force("com.google.android.gms:play-services-basement:18.4.0")
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

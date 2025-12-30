@@ -1,4 +1,14 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Restrict app to phone only (no tablet support) -->
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="false"
+        android:xlargeScreens="false"
+        android:requiresSmallestWidthDp="320" />
+
     <!-- Permissions for Google Maps and Location -->
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
@@ -15,7 +25,7 @@
     <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION"/>
 
     <application
-        android:label="Glimo"
+        android:label="Glemo"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
@@ -49,14 +59,25 @@
         <!-- Google Maps API Key -->
         <meta-data
             android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyDdCx0b9cwP7wrh0YGZ7A0a7HWoa7JOaZ8"/>
+            android:value="${GOOGLE_MAPS_API_KEY}"/>
 
         <!-- Background GPS Tracking Service -->
         <service
             android:name="id.flutter.flutter_background_service.BackgroundService"
             android:exported="false"
             android:foregroundServiceType="location"
-            android:permission="android.permission.BIND_JOB_SERVICE" />
+            android:permission="android.permission.BIND_JOB_SERVICE"
+            tools:replace="android:exported" />
+
+        <!-- Activity Recognition Service for Auto-Tracking -->
+        <service
+            android:name="dk.cachet.activity_recognition_flutter.ForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <receiver
+            android:name="dk.cachet.activity_recognition_flutter.ActivityRecognitionBroadcastReceiver"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

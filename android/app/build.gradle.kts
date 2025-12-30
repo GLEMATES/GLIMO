@@ -1,3 +1,6 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     // START: FlutterFire Configuration
@@ -8,6 +11,20 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Load local.properties
+val localProperties = Properties()
+val localPropertiesFile = rootProject.file("local.properties")
+if (localPropertiesFile.exists()) {
+    localPropertiesFile.inputStream().use { localProperties.load(it) }
+}
+
+// Load key.properties for signing
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+
 android {
     namespace = "com.glemates.glimo"
     compileSdk = flutter.compileSdkVersion
@@ -16,6 +33,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11
         targetCompatibility = JavaVersion.VERSION_11
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlinOptions {
@@ -27,21 +45,57 @@ android {
         applicationId = "com.glemates.glimo"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        minSdk = 26
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+
+        // Inject Google Maps API Key from local.properties
+        val googleMapsApiKey = localProperties.getProperty("GOOGLE_MAPS_API_KEY") ?: ""
+        manifestPlaceholders["GOOGLE_MAPS_API_KEY"] = googleMapsApiKey
+    }
+
+    signingConfigs {
+        create("release") {
+            if (keystorePropertiesFile.exists()) {
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+                storeFile = file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+            }
+        }
     }
 
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName("release")
+
+            // Disable minification for internal testing to prevent background service crash
+            // Re-enable for production release after thorough testing
+            isMinifyEnabled = false
+            isShrinkResources = false
+
+            // Uncomment below when ready for production
+            // isMinifyEnabled = true
+            // isShrinkResources = true
+            // proguardFiles(
+            //     getDefaultProguardFile("proguard-android-optimize.txt"),
+            //     "proguard-rules.pro"
+            // )
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+tasks.whenTaskAdded {
+    if (name == "extractDeepLinksRelease") {
+        mustRunAfter("processReleaseGoogleServices")
+    }
+}
+
+dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

@@ -5,7 +5,7 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>Glimo</string>
+		<string>Glemo</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
 		<key>CFBundleInfoDictionaryVersion</key>
 		<string>6.0</string>
 		<key>CFBundleName</key>
-		<string>glimo</string>
+		<string>Glemo</string>
 		<key>CFBundlePackageType</key>
 		<string>APPL</string>
 		<key>CFBundleShortVersionString</key>
@@ -50,11 +50,11 @@
 
 		<!-- Location Permissions for Google Maps -->
 		<key>NSLocationWhenInUseUsageDescription</key>
-		<string>Glimo memerlukan akses lokasi untuk melacak perjalanan motor Anda</string>
+		<string>Glemo memerlukan akses lokasi untuk melacak perjalanan motor Anda</string>
 		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
-		<string>Glimo memerlukan akses lokasi untuk melacak perjalanan motor Anda bahkan saat aplikasi di background</string>
+		<string>Glemo memerlukan akses lokasi untuk melacak perjalanan motor Anda bahkan saat aplikasi di background</string>
 		<key>NSLocationAlwaysUsageDescription</key>
-		<string>Glimo memerlukan akses lokasi untuk melacak perjalanan motor Anda</string>
+		<string>Glemo memerlukan akses lokasi untuk melacak perjalanan motor Anda</string>
 
 		<!-- Background Modes for GPS Tracking -->
 		<key>UIBackgroundModes</key>
@@ -72,7 +72,7 @@
 
 		<!-- Motion & Fitness for Activity Recognition -->
 		<key>NSMotionUsageDescription</key>
-		<string>Glimo memerlukan akses aktivitas fisik untuk mendeteksi kapan Anda berkendara dan mengatur tracking otomatis</string>
+		<string>Glemo memerlukan akses aktivitas fisik untuk mendeteksi kapan Anda berkendara dan mengatur tracking otomatis</string>
 
 		<!-- Google Sign-In URL Scheme -->
 		<key>CFBundleURLTypes</key>
