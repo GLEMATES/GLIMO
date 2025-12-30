@@ -298,6 +298,236 @@ class _TotalDistanceCardState extends ConsumerState<TotalDistanceCard> {
     );
   }
 
+  /// Show location permission disclosure dialog (required by Google Play)
+  Future<void> _showLocationDisclosureDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(AppSpacing.l),
+        ),
+        icon: const Icon(
+          Icons.location_on,
+          color: AppColors.normalActive,
+          size: 48,
+        ),
+        title: Text(
+          'Izin Akses Lokasi',
+          style: AppTypography.titleLarge.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+          textAlign: TextAlign.center,
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Glemo memerlukan akses lokasi di latar belakang untuk:',
+              style: AppTypography.bodyMedium.copyWith(
+                color: AppColors.neutral900,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: AppSpacing.m),
+            _buildPermissionPoint(
+              Icons.navigation,
+              'Melacak perjalanan motor secara otomatis',
+            ),
+            const SizedBox(height: AppSpacing.s),
+            _buildPermissionPoint(
+              Icons.speed,
+              'Menghitung jarak tempuh dengan akurat',
+            ),
+            const SizedBox(height: AppSpacing.s),
+            _buildPermissionPoint(
+              Icons.notifications,
+              'Mengirim reminder servis berdasarkan jarak',
+            ),
+            const SizedBox(height: AppSpacing.m),
+            Container(
+              padding: const EdgeInsets.all(AppSpacing.m),
+              decoration: BoxDecoration(
+                color: AppColors.normalActive.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(AppSpacing.m),
+                border: Border.all(
+                  color: AppColors.normalActive.withValues(alpha: 0.3),
+                ),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      const Icon(
+                        Icons.lock,
+                        color: AppColors.normalActive,
+                        size: 16,
+                      ),
+                      const SizedBox(width: AppSpacing.xs),
+                      Text(
+                        'Privasi Terjamin',
+                        style: AppTypography.bodyMedium.copyWith(
+                          color: AppColors.normalActive,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: AppSpacing.xs),
+                  Text(
+                    'Tracking hanya berjalan saat Anda memulai perjalanan. Data lokasi hanya digunakan untuk mencatat rute dan tidak dibagikan ke pihak manapun.',
+                    style: AppTypography.bodySmall.copyWith(
+                      color: AppColors.neutral700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: AppSpacing.m),
+            Text(
+              'Aplikasi akan meminta izin akses lokasi. Pilih "Izinkan sepanjang waktu" agar tracking tetap berjalan meskipun aplikasi di-minimize.',
+              style: AppTypography.bodySmall.copyWith(
+                color: AppColors.neutral600,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actionsPadding: const EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l, AppSpacing.l),
+        actions: [
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: () => Navigator.pop(context, true),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.normalHover,
+                    foregroundColor: AppColors.neutral0,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.m,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.xxl),
+                    ),
+                    elevation: 0,
+                  ),
+                  child: Text(
+                    'Lanjutkan',
+                    style: AppTypography.titleMedium.copyWith(
+                      color: AppColors.neutral0,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: AppSpacing.m),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context, false),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.normalHover,
+                    side: BorderSide(
+                      color: AppColors.normalHover,
+                      width: 1.5,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      vertical: AppSpacing.m,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppSpacing.xxl),
+                    ),
+                  ),
+                  child: Text(
+                    'Tidak Sekarang',
+                    style: AppTypography.titleMedium.copyWith(
+                      color: AppColors.normalHover,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      try {
+        await ref.read(gpsTrackingProvider.notifier).startTracking();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Tracking dimulai! Scroll ke bawah untuk melihat map.',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.neutral0,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              backgroundColor: AppColors.normalHover,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(AppSpacing.m),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSpacing.m),
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                'Error: ${e.toString()}',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.neutral0,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              backgroundColor: AppColors.error,
+              behavior: SnackBarBehavior.floating,
+              margin: const EdgeInsets.all(AppSpacing.m),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppSpacing.m),
+              ),
+              duration: const Duration(seconds: 2),
+            ),
+          );
+        }
+      }
+    }
+  }
+
+  Widget _buildPermissionPoint(IconData icon, String text) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          icon,
+          color: AppColors.normalActive,
+          size: 20,
+        ),
+        const SizedBox(width: AppSpacing.s),
+        Expanded(
+          child: Text(
+            text,
+            style: AppTypography.bodyMedium.copyWith(
+              color: AppColors.neutral700,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   Widget _buildTripButton(WidgetRef ref) {
     final trackingState = ref.watch(gpsTrackingProvider);
     final isTracking = trackingState.status == TrackingStatus.tracking;
@@ -315,52 +545,7 @@ class _TotalDistanceCardState extends ConsumerState<TotalDistanceCard> {
         child: Material(
           color: Colors.transparent,
           child: InkWell(
-            onTap: isTracking ? null : () async {
-              try {
-                await ref.read(gpsTrackingProvider.notifier).startTracking();
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Tracking dimulai! Scroll ke bawah untuk melihat map.',
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.neutral0,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      backgroundColor: AppColors.normalHover,
-                      behavior: SnackBarBehavior.floating,
-                      margin: const EdgeInsets.all(AppSpacing.m),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppSpacing.m),
-                      ),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Error: ${e.toString()}',
-                        style: AppTypography.bodyMedium.copyWith(
-                          color: AppColors.neutral0,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                      backgroundColor: AppColors.error,
-                      behavior: SnackBarBehavior.floating,
-                      margin: const EdgeInsets.all(AppSpacing.m),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppSpacing.m),
-                      ),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              }
-            },
+            onTap: isTracking ? null : _showLocationDisclosureDialog,
             borderRadius: BorderRadius.circular(AppSpacing.m),
             child: Center(
               child: Row(

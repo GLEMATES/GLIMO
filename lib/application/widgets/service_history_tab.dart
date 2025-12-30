@@ -12,7 +12,7 @@ class ServiceHistoryTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final groupedComponents = ref.watch(groupedServicesByComponentProvider);
+    final groupedComponents = ref.watch(groupedServicesByComponentForActiveMotorProvider);
 
     return ListView(
       padding: EdgeInsets.zero,

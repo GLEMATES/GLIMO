@@ -23,7 +23,7 @@ class OnboardingPage3 extends StatelessWidget {
     return Expanded(
       child: Center(
         child: Image.asset(
-          'assets/images/Guide_3.png',
+          'assets/images/guide-3-white-bg.gif',
           fit: BoxFit.contain,
           errorBuilder: (context, error, stackTrace) {
             return Container(

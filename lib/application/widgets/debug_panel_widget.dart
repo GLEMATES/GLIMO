@@ -16,6 +16,10 @@ class DebugPanelWidget extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
+    final bottomPadding = MediaQuery.of(context).padding.bottom;
+    final bottomNavBarHeight = 80.0;
+    final safeBottomMargin = bottomPadding + bottomNavBarHeight + 16;
+
     return Stack(
       children: [
         if (debugState.isPanelOpen)
@@ -36,11 +40,11 @@ class DebugPanelWidget extends ConsumerWidget {
             top: MediaQuery.of(context).padding.top + 10,
             left: 10,
             right: 10,
-            bottom: 80,
+            bottom: safeBottomMargin,
             child: _buildPanel(context, ref, debugState),
           ),
         Positioned(
-          bottom: 100,
+          bottom: safeBottomMargin,
           right: 16,
           child: _buildFloatingButton(context, ref, debugState),
         ),

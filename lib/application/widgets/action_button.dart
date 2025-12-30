@@ -19,7 +19,7 @@ class ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return SizedBox(
       width: double.infinity,
-      height: 60,
+      height: 48,
       child: isPrimary
           ? ElevatedButton(
               onPressed: onPressed,

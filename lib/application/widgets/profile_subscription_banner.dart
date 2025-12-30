@@ -71,8 +71,11 @@ class ProfileSubscriptionBanner extends ConsumerWidget {
                     style: AppTypography.bodyMedium.copyWith(
                       color: AppColors.neutral600,
                       fontSize: 14,
+                      letterSpacing: 0,
+                      wordSpacing: 0,
                     ),
-                    textAlign: TextAlign.justify,
+                    textAlign: TextAlign.start,
+                    softWrap: true,
                   ),
                   const SizedBox(height: AppSpacing.s),
                   Align(

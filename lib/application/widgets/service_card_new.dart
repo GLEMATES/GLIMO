@@ -3,6 +3,8 @@ import '../providers/servis_schedule_provider.dart';
 import '../themes/app_colors.dart';
 import '../themes/app_spacing.dart';
 import '../themes/app_typography.dart';
+import '../utils/component_info_helper.dart';
+import '../utils/component_info_popup.dart';
 
 class ServiceCardNew extends StatelessWidget {
   final String component;
@@ -78,12 +80,39 @@ class ServiceCardNew extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            component,
-                            style: AppTypography.titleMedium.copyWith(
-                              fontWeight: FontWeight.bold,
+                          Flexible(
+                            child: Text(
+                              component,
+                              style: AppTypography.titleMedium.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
                           ),
+                          // Info icon button - shows component image & description
+                          if (ComponentInfoHelper.hasComponentInfo(component))
+                            GestureDetector(
+                              onTap: () {
+                                final info = ComponentInfoHelper.getComponentInfo(component);
+                                if (info != null) {
+                                  showComponentInfoPopup(
+                                    context: context,
+                                    title: component,
+                                    imagePath: info.imagePath,
+                                    description: info.description,
+                                  );
+                                }
+                              },
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppSpacing.xs,
+                                ),
+                                child: Icon(
+                                  Icons.info_outline,
+                                  size: 18,
+                                  color: AppColors.normalHover,
+                                ),
+                              ),
+                            ),
                           if (note.isNotEmpty) ...[
                             const SizedBox(width: AppSpacing.xs),
                             Container(
