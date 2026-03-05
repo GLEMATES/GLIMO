@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'firebase_options.dart';
 import 'application/services/background_tracking_service.dart';
 import 'application/services/notification_service.dart';
@@ -73,27 +72,19 @@ void main() async {
 
   await NotificationService().initialize();
 
-  // Initialize payment service with proper error handling
-  try {
-    debugPrint('🔧 [Payment] Initializing PaymentService...');
-
-    // Add timeout to prevent hanging during initialization
-    await PaymentService().initialize().timeout(
-      const Duration(seconds: 15),
-      onTimeout: () {
-        debugPrint('⏱️ [Payment] Initialization timeout after 15 seconds');
-        throw TimeoutException('PaymentService initialization timeout');
-      },
-    );
-
+  PaymentService().initialize().timeout(
+    const Duration(seconds: 5),
+    onTimeout: () {
+      debugPrint('⏱️ [Payment] Initialization timeout after 5 seconds');
+      throw TimeoutException('PaymentService initialization timeout');
+    },
+  ).then((_) {
     debugPrint('✅ [Payment] PaymentService initialized successfully');
-  } catch (e, stackTrace) {
+  }).catchError((e, stackTrace) {
     debugPrint('❌ [Payment] PaymentService initialization failed: $e');
     debugPrint('   Stack: $stackTrace');
     debugPrint('   App will continue without payment features');
-    debugPrint('   This is safe - payment features will be disabled');
-    // Don't rethrow - let app continue without payment
-  }
+  });
 
   // Initialize navigation helper with global navigator key
   NavigationHelper.initialize(navigatorKey);
@@ -137,21 +128,14 @@ class _GlemoAppState extends ConsumerState<GlemoApp> {
       // Load subscription status and check expiry when user logs in
       next.whenOrNull(
         authenticated: (user) async {
-          // Add safety wrapper to prevent crash
           try {
             debugPrint('👤 [Auth] User logged in, loading subscription...');
 
-            // First, load from Firestore
             await ref.read(subscriptionStatusProvider.notifier).loadSubscriptionStatus();
 
             final status = ref.read(subscriptionStatusProvider);
             debugPrint('📊 [Auth] Loaded subscription: isPremium=${status.isPremium}, isActive=${status.isActive}');
 
-            // REMOVED: Auto-restore on cold start (causes crash)
-            // Instead, we'll do deferred restore after user reaches beranda
-            // This prevents race condition with payment service initialization
-
-            // Check expiry only (safe operation)
             try {
               await ref.read(subscriptionStatusProvider.notifier).checkAndHandleExpiry();
             } catch (expiryError) {
@@ -160,7 +144,6 @@ class _GlemoAppState extends ConsumerState<GlemoApp> {
           } catch (e, stackTrace) {
             debugPrint('❌ [Auth] CRITICAL: Failed subscription load: $e');
             debugPrint('   Stack: $stackTrace');
-            // Don't crash - just log error
           }
         },
       );
@@ -232,30 +215,8 @@ GoRouter _createRouter(WidgetRef ref) {
         orElse: () => false,
       );
 
-      // Jika authenticated, cek apakah motor sudah di-fill (ONLY pada registration flow)
-      if (isAuthenticated) {
-        final prefs = await SharedPreferences.getInstance();
-        // Cek apakah ini registration flow dengan motor_filled flag
-        final motorFilled = prefs.getBool('motor_filled') ?? false;
-
-        final currentPath = state.matchedLocation;
-
-        // HANYA apply motor-details redirect jika motor_filled flag TRUE (dari registration)
-        // Setelah user berhasil login sekali, flag di-clear dan tidak akan redirect ke motor-details lagi
-        if (motorFilled && currentPath != '/motor-details' && currentPath != '/motor-model' && !currentPath.startsWith('/motor-type/')) {
-          return '/motor-details';
-        }
-
-        // Jika motor_filled dan user di motor-details page, allow
-        if (motorFilled && (currentPath == '/motor-details' || currentPath == '/motor-model' || currentPath.startsWith('/motor-type/'))) {
-          return null; // allow
-        }
-
-        // Clear motor_filled setelah user successfully navigate away dari motor-details
-        if (motorFilled && currentPath == '/beranda') {
-          await prefs.remove('motor_filled');
-        }
-      }
+      // Let individual screens (login_screen, email_verification_screen) handle
+      // navigation logic based on whether motors exist in Firestore
 
       // Continue dengan logic yang sudah ada
       final currentPath = state.matchedLocation;
@@ -278,9 +239,9 @@ GoRouter _createRouter(WidgetRef ref) {
 
       final isPublicPath = publicPaths.contains(currentPath) || currentPath.startsWith('/motor-type/');
 
-      // Jika sudah authenticated dan mencoba akses login/register, redirect ke beranda
-      // (tapi izinkan akses ke motor-details untuk input motor setelah register)
-      if (isAuthenticated && (currentPath == '/login' || currentPath == '/register')) {
+      // Jika sudah authenticated dan mencoba akses login, redirect ke beranda
+      // TAPI jangan redirect dari /register karena user baru harus ke email verification dulu
+      if (isAuthenticated && currentPath == '/login') {
         return '/beranda';
       }
 

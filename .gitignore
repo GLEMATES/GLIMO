@@ -125,6 +125,16 @@ app.*.symbols
 # Environment variables
 .env
 .env.local
-.env.production*.md
+.env.production
+
+# Debug and log files
+app_logs.txt
+full_logs.txt
+lib/check_motor_data.dart
+
+# Documentation (keep README)
 *.md
+!README.md
+
+# Node modules
 node_modules/
