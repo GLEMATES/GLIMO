@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:go_router/go_router.dart';
 import '../../providers/motor_list_provider.dart';
 import '../../providers/servis_schedule_provider.dart';
 import '../../providers/service_history_provider.dart';
@@ -356,6 +357,13 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     }
 
     if (activeMotor == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (context.mounted) {
+          Logger.warn('No motor found, redirecting to motor-details', tag: 'MONITORING');
+          context.go('/motor-details');
+        }
+      });
+
       return Scaffold(
         backgroundColor: AppColors.neutral0,
         appBar: AppBar(
@@ -366,9 +374,18 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
           backgroundColor: AppColors.normalHover,
         ),
         body: Center(
-          child: Text(
-            'Pilih motor terlebih dahulu',
-            style: AppTypography.bodyLarge,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(color: AppColors.normalHover),
+              const SizedBox(height: AppSpacing.l),
+              Text(
+                'Belum ada motor, mengalihkan...',
+                style: AppTypography.bodyMedium.copyWith(
+                  color: AppColors.neutral700,
+                ),
+              ),
+            ],
           ),
         ),
       );

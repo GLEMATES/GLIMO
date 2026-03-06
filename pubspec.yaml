@@ -1,7 +1,7 @@
 name: glimo
 description: "Glimo - Personal Development Version"
 publish_to: 'none'
-version: 1.0.0+34
+version: 1.0.3+41
 
 environment:
   sdk: ^3.5.0

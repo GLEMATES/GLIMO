@@ -175,9 +175,6 @@ class AuthNotifier extends Notifier<AuthState> {
     try {
       state = const AuthState.loading();
 
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('motor_filled');
-
       await ref.read(motorListProvider.notifier).clearMotors();
       ref.read(motorDetailsProvider.notifier).clearAll();
       await ref.read(tripHistoryProvider.notifier).clearHistory();

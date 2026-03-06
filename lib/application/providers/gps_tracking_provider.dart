@@ -6,7 +6,6 @@ import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:permission_handler/permission_handler.dart';
 import '../services/background_tracking_service.dart';
 import '../services/activity_recognition_service.dart';
 import 'tracking_mode_provider.dart';
@@ -414,32 +413,39 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
       throw Exception('Location services are disabled');
     }
 
-    // STEP 1: Request foreground location permission (When in Use)
-    debugPrint('📍 [GPS TRACKING] Requesting location permission...');
-    var locationStatus = await Permission.location.request();
+    // Check current permission status using Geolocator (more reliable for iOS)
+    debugPrint('📍 [GPS TRACKING] Checking location permission...');
+    LocationPermission permission = await Geolocator.checkPermission();
+    debugPrint('   Current permission: $permission');
 
-    if (locationStatus.isDenied || locationStatus.isPermanentlyDenied) {
+    // If permission denied, request it
+    if (permission == LocationPermission.denied) {
+      debugPrint('📍 [GPS TRACKING] Requesting location permission...');
+      permission = await Geolocator.requestPermission();
+      debugPrint('   Permission after request: $permission');
+    }
+
+    // Check if permission is still denied
+    if (permission == LocationPermission.denied) {
       throw Exception('Location permission denied');
     }
 
-    debugPrint('✅ [GPS TRACKING] Location permission granted: $locationStatus');
-
-    // STEP 2: Request background location permission (Allow All the Time)
-    // This triggers the second prompt with "Allow all the time" option on Android 10+
-    debugPrint('📍 [GPS TRACKING] Requesting background location permission...');
-    var backgroundStatus = await Permission.locationAlways.request();
-
-    if (backgroundStatus.isGranted) {
-      debugPrint('✅ [GPS TRACKING] Background location permission granted!');
-    } else if (backgroundStatus.isDenied) {
-      debugPrint('⚠️ [GPS TRACKING] Background location denied, tracking may stop when app is backgrounded');
-      // Continue anyway, tracking will work while app is in foreground
-    } else if (backgroundStatus.isPermanentlyDenied) {
-      debugPrint('❌ [GPS TRACKING] Background location permanently denied');
-      // Continue anyway, tracking will work while app is in foreground
+    if (permission == LocationPermission.deniedForever) {
+      throw Exception('Location permission permanently denied. Please enable in Settings.');
     }
 
-    debugPrint('📍 [GPS TRACKING] Final background status: $backgroundStatus');
+    debugPrint('✅ [GPS TRACKING] Location permission granted: $permission');
+
+    // For background tracking (Always permission)
+    // On iOS: User needs to manually select "Always" in Settings after granting "When in Use"
+    // On Android: We can request it directly
+    if (permission == LocationPermission.whileInUse) {
+      debugPrint('⚠️ [GPS TRACKING] Only "While Using" permission granted');
+      debugPrint('   For background tracking, user needs to set "Always" in Settings (iOS)');
+      // Continue anyway - tracking will work while app is in foreground
+    } else if (permission == LocationPermission.always) {
+      debugPrint('✅ [GPS TRACKING] "Always" permission granted - background tracking enabled!');
+    }
 
     // Get initial position
     Position initialPosition = await Geolocator.getCurrentPosition(

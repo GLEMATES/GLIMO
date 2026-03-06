@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../../providers/motor_details_provider.dart';
 import '../../providers/motor_list_provider.dart';
 import '../../themes/app_colors.dart';
@@ -94,29 +93,31 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                       final savedFrom = from;
                       final savedEditMotorId = editMotorId;
 
+                      // Close confirmation dialog
                       Navigator.of(context).pop();
 
-                      if (context.mounted) {
-                        showDialog(
-                          context: context,
-                          barrierDismissible: false,
-                          builder: (BuildContext loadingContext) {
-                            return AlertDialog(
-                              content: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  CircularProgressIndicator(color: AppColors.normalHover),
-                                  const SizedBox(height: AppSpacing.l),
-                                  Text(
-                                    'Menyimpan data motor...',
-                                    style: AppTypography.bodyMedium,
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        );
-                      }
+                      // Show loading dialog
+                      if (!context.mounted) return;
+
+                      showDialog(
+                        context: context,
+                        barrierDismissible: false,
+                        builder: (BuildContext loadingContext) {
+                          return AlertDialog(
+                            content: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                CircularProgressIndicator(color: AppColors.normalHover),
+                                const SizedBox(height: AppSpacing.l),
+                                Text(
+                                  'Menyimpan data motor...',
+                                  style: AppTypography.bodyMedium,
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      );
 
                       try {
                         final estimatedPurchaseDate = DateTime.now();
@@ -148,15 +149,19 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                 );
                           }
 
-                          if (context.mounted) {
-                            Navigator.of(context, rootNavigator: true).pop();
-                          }
+                          // Close loading dialog
+                          if (!context.mounted) return;
+                          Navigator.of(context, rootNavigator: true).pop();
 
-                          if (context.mounted) {
-                            ref.read(motorDetailsProvider.notifier).clearAll();
-                            context.pop();
-                          }
+                          // Wait a bit for dialog to fully close
+                          await Future.delayed(const Duration(milliseconds: 100));
+
+                          // Clear form and go back
+                          if (!context.mounted) return;
+                          ref.read(motorDetailsProvider.notifier).clearAll();
+                          context.pop();
                         } else {
+                          // Registration flow
                           await ref.read(motorListProvider.notifier).addMotor(
                                 savedModel,
                                 savedType,
@@ -169,37 +174,51 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                 },
                               );
 
-                          if (context.mounted) {
-                            Navigator.of(context, rootNavigator: true).pop();
-                          }
+                          // Close loading dialog
+                          if (!context.mounted) return;
+                          Navigator.of(context, rootNavigator: true).pop();
 
-                          // Clear motor_filled flag to prevent loop
-                          final prefs = await SharedPreferences.getInstance();
-                          await prefs.remove('motor_filled');
+                          // Wait a bit for dialog to fully close
+                          await Future.delayed(const Duration(milliseconds: 100));
 
                           // Clear form
-                          if (context.mounted) {
-                            ref.read(motorDetailsProvider.notifier).clearAll();
-                          }
+                          if (!context.mounted) return;
+                          ref.read(motorDetailsProvider.notifier).clearAll();
 
-                          // Navigate to beranda - user stays logged in
-                          if (context.mounted) {
-                            context.go('/beranda');
-                          }
+                          // Navigate to beranda
+                          if (!context.mounted) return;
+                          context.go('/beranda');
                         }
                       } catch (e) {
+                        // Close loading dialog
                         if (context.mounted) {
                           Navigator.of(context, rootNavigator: true).pop();
                         }
 
-                        if (context.mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text('Gagal menyimpan data: $e'),
-                              backgroundColor: AppColors.error,
+                        // Show error snackbar
+                        if (!context.mounted) return;
+
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Gagal menyimpan motor ke server. Pastikan koneksi internet aktif dan coba lagi.',
+                              style: AppTypography.bodyMedium.copyWith(
+                                color: AppColors.neutral0,
+                                fontWeight: FontWeight.w600,
+                              ),
                             ),
-                          );
-                        }
+                            backgroundColor: AppColors.error,
+                            behavior: SnackBarBehavior.floating,
+                            duration: const Duration(seconds: 5),
+                            action: SnackBarAction(
+                              label: 'TUTUP',
+                              textColor: AppColors.neutral0,
+                              onPressed: () {
+                                ScaffoldMessenger.of(context).hideCurrentSnackBar();
+                              },
+                            ),
+                          ),
+                        );
                       }
                     },
                     style: ElevatedButton.styleFrom(
@@ -230,21 +249,29 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
         iconTheme: const IconThemeData(color: AppColors.neutral0),
       ),
       body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.l),
-          child: Column(
-            children: [
-              const SizedBox(height: AppSpacing.xxl),
-              buildForm(context, ref),
-              const Spacer(),
-              ActionButton(
+        child: Column(
+          children: [
+            Expanded(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(AppSpacing.l),
+                child: Column(
+                  children: [
+                    const SizedBox(height: AppSpacing.xxl),
+                    buildForm(context, ref),
+                    const SizedBox(height: AppSpacing.xxl),
+                  ],
+                ),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.l),
+              child: ActionButton(
                 text: 'Lanjutkan',
                 onPressed: isFormValid ? showConfirmationDialog : null,
                 isPrimary: true,
               ),
-              const SizedBox(height: AppSpacing.l),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );

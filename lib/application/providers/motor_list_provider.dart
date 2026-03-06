@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -191,31 +192,34 @@ class MotorListNotifier extends Notifier<List<Motor>> {
     state = [...state, newMotor];
     await _saveToPreferences();
 
-    // ✅ Save ke Firestore di BACKGROUND dengan timeout (fire and forget)
-    // Jika gagal, user sudah redirect dan motor tetap ada di local cache
-    Future.microtask(() async {
-      try {
-        await motorDoc.set({
-          'model': model,
-          'type': type,
-          'odometer': odometer,
-          'odometerAwal': "0",
-          'tanggalDitambah': Timestamp.fromDate(now),
-          'tanggalBeli': Timestamp.fromDate(tanggalBeli),
-          'tanggalServisTerakhir': tanggalServisTerakhir != null ? Timestamp.fromDate(tanggalServisTerakhir) : null,
-          'odometerServisTerakhir': odometerServisTerakhir,
-          'isActive': isFirstMotor,
-        }).timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            throw Exception('Timeout saving motor to Firestore');
-          },
-        );
-      } catch (e) {
-        // Silent fail - motor sudah ada di local cache
-        // User bisa sync ulang nanti saat load motors
-      }
-    });
+    // ✅ Save ke Firestore dengan proper error handling
+    try {
+      debugPrint('🔄 Saving motor to Firestore: ${motorDoc.id}');
+      await motorDoc.set({
+        'model': model,
+        'type': type,
+        'odometer': odometer,
+        'odometerAwal': "0",
+        'tanggalDitambah': Timestamp.fromDate(now),
+        'tanggalBeli': Timestamp.fromDate(tanggalBeli),
+        'tanggalServisTerakhir': tanggalServisTerakhir != null ? Timestamp.fromDate(tanggalServisTerakhir) : null,
+        'odometerServisTerakhir': odometerServisTerakhir,
+        'isActive': isFirstMotor,
+      }).timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          throw Exception('Timeout saving motor to Firestore');
+        },
+      );
+      debugPrint('✅ Motor saved to Firestore successfully!');
+    } catch (e) {
+      debugPrint('❌ Failed to save motor to Firestore: $e');
+      // Rollback local state if Firestore save fails
+      state = state.where((motor) => motor.id != motorDoc.id).toList();
+      await _saveToPreferences();
+      // Re-throw error so UI can handle it
+      rethrow;
+    }
   }
 
   Future<void> updateMotor(String id, String model, String type, String odometer) async {

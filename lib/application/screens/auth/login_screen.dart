@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:wave/config.dart';
 import 'package:wave/wave.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../themes/app_colors.dart';
 import '../../themes/app_spacing.dart';
 import '../../themes/app_typography.dart';
@@ -64,7 +65,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     ref.listen<AuthState>(authStateProvider, (previous, next) {
       next.maybeWhen(
         authenticated: (user) async {
-          // Reset loading state
           if (mounted) {
             setState(() {
               _isEmailLoading = false;
@@ -72,15 +72,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             });
           }
 
-          // Check apakah ada pending motor data dari registrasi
           final prefs = await SharedPreferences.getInstance();
           final pendingModel = prefs.getString('pending_motor_model');
           final pendingType = prefs.getString('pending_motor_type');
           final pendingOdometer = prefs.getString('pending_motor_odometer');
 
-          // Jika ada pending motor data, save ke Firestore sekarang
           if (pendingModel != null && pendingType != null && pendingOdometer != null) {
-            debugPrint('🔍 Found pending motor data, saving to Firestore...');
+            debugPrint('🔍 [LOGIN] Found pending motor data, saving to Firestore...');
             try {
               await ref.read(motorListProvider.notifier).addMotor(
                     pendingModel,
@@ -88,15 +86,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     pendingOdometer,
                     DateTime.now(),
                   );
-              debugPrint('✅ Pending motor saved successfully to Firestore');
+              debugPrint('✅ [LOGIN] Pending motor saved successfully to Firestore');
 
-              // Clear pending data setelah berhasil disimpan
               await prefs.remove('pending_motor_model');
               await prefs.remove('pending_motor_type');
               await prefs.remove('pending_motor_odometer');
-              debugPrint('✅ Cleared pending motor data from SharedPreferences');
+              debugPrint('✅ [LOGIN] Cleared pending motor data from SharedPreferences');
             } catch (e) {
-              debugPrint('❌ Error saving pending motor to Firestore: $e');
+              debugPrint('❌ [LOGIN] Error saving pending motor to Firestore: $e');
               if (context.mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
@@ -116,26 +113,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             }
           }
 
-          // Check if widget is still mounted before accessing ref
           if (!mounted) {
-            debugPrint('⚠️ Widget unmounted before loading motors, aborting');
+            debugPrint('⚠️ [LOGIN] Widget unmounted before loading motors, aborting');
             return;
           }
 
-          // Load motors untuk check apakah user sudah punya motor
           debugPrint('🔍 [LOGIN] Loading motors from Firestore...');
           await ref.read(motorListProvider.notifier).loadMotors();
 
-          // Check if widget is still mounted after async operation
           if (!mounted) {
-            debugPrint('⚠️ Widget unmounted during motor loading, aborting navigation');
+            debugPrint('⚠️ [LOGIN] Widget unmounted during motor loading, aborting navigation');
             return;
           }
 
-          // Save motors reference before checking context.mounted
           var motors = ref.read(motorListProvider);
 
-          // Retry once if motors empty (handle race condition)
           if (motors.isEmpty) {
             debugPrint('⚠️ [LOGIN] No motors found on first load, retrying after delay...');
             await Future.delayed(const Duration(milliseconds: 500));
@@ -148,11 +140,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
           if (context.mounted) {
             if (motors.isEmpty) {
-              // Belum ada motor → redirect ke tambah motor (user baru atau motor belum dibuat saat registrasi)
-              debugPrint('⚠️ [LOGIN] No motors found after retry, redirecting to motor-details');
-              context.go('/motor-details');
+              final firebaseUser = FirebaseAuth.instance.currentUser;
+              final isNewGoogleUser = firebaseUser != null &&
+                  firebaseUser.metadata.creationTime != null &&
+                  firebaseUser.metadata.lastSignInTime != null &&
+                  firebaseUser.metadata.creationTime!
+                      .difference(firebaseUser.metadata.lastSignInTime!)
+                      .abs()
+                      .inSeconds < 60;
+
+              if (isNewGoogleUser) {
+                debugPrint('🆕 [LOGIN] New Google user detected, redirecting to motor-details');
+                context.go('/motor-details');
+              } else {
+                debugPrint('⚠️ [LOGIN] Existing user with no motors, redirecting to motor-details');
+                context.go('/motor-details');
+              }
             } else {
-              // Sudah ada motor → redirect ke beranda (NORMAL FLOW untuk user lama)
               debugPrint('✅ [LOGIN] ${motors.length} motor(s) found, redirecting to home');
               context.go('/beranda');
             }

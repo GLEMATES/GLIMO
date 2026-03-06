@@ -14,7 +14,8 @@ import '../../widgets/total_distance_card.dart';
 import '../../widgets/monthly_stats_card.dart';
 import '../../widgets/trip_recovery_dialog.dart';
 import '../../widgets/daily_service_checker.dart';
-import '../../widgets/debug_panel_widget.dart';
+// TEMPORARY DISABLED FOR DEMO DAY - UNCOMMENT AFTER DEMO
+// import '../../widgets/debug_panel_widget.dart';
 import '../../widgets/deferred_purchase_restore.dart';
 
 class BerandaScreen extends ConsumerWidget {
@@ -36,7 +37,8 @@ class BerandaScreen extends ConsumerWidget {
           ),
           const TripRecoveryChecker(),
           const DailyServiceChecker(),
-          const DebugPanelWidget(),
+          // TEMPORARY DISABLED FOR DEMO DAY - UNCOMMENT AFTER DEMO
+          // const DebugPanelWidget(),
           const DeferredPurchaseRestore(),
         ],
       ),

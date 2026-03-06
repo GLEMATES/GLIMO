@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../themes/app_colors.dart';
 import '../../themes/app_spacing.dart';
 import '../../themes/app_typography.dart';
@@ -96,9 +97,46 @@ class _EmailVerificationScreenState
         actions: [
           ActionButton(
             text: 'Login Sekarang',
-            onPressed: () {
-              Navigator.of(context).pop();
-              context.go('/login');
+            onPressed: () async {
+              // Cache navigators before async operations
+              final navigator = GoRouter.of(context);
+              final dialogNavigator = Navigator.of(context);
+
+              // Logout user supaya mereka harus login manual
+              // Ini memastikan pending motor data akan tersimpan saat login
+              // NOTE: Kita TIDAK gunakan authStateProvider.logout() karena itu akan
+              // clear pending motor data dari SharedPreferences
+              try {
+                debugPrint('🔐 [EMAIL_VERIFY] Logging out user...');
+                await FirebaseAuth.instance.signOut();
+                debugPrint('✅ [EMAIL_VERIFY] User logged out successfully');
+
+                // Force invalidate authStateProvider to ensure router knows user is logged out
+                if (mounted) {
+                  ref.invalidate(authStateProvider);
+                  debugPrint('♻️ [EMAIL_VERIFY] AuthStateProvider invalidated');
+                }
+
+                // Wait for auth state to propagate to prevent race condition
+                // Router redirect checks auth state - we need to ensure it's updated
+                await Future.delayed(const Duration(milliseconds: 500));
+                debugPrint('⏱️ [EMAIL_VERIFY] Auth state propagation delay complete');
+              } catch (e) {
+                debugPrint('❌ [EMAIL_VERIFY] Error logging out: $e');
+              }
+
+              if (mounted) {
+                // Close dialog first
+                dialogNavigator.pop();
+
+                // Small delay to ensure dialog closes before navigation
+                await Future.delayed(const Duration(milliseconds: 150));
+
+                if (mounted) {
+                  debugPrint('🔄 [EMAIL_VERIFY] Navigating to login screen...');
+                  navigator.go('/login');
+                }
+              }
             },
           ),
         ],
@@ -293,9 +331,37 @@ class _EmailVerificationScreenState
               ),
               const SizedBox(height: AppSpacing.l),
               TextButton(
-                onPressed: () {
+                onPressed: () async {
+                  // Cache navigator before async operations
+                  final navigator = GoRouter.of(context);
+
                   _timer?.cancel();
-                  context.go('/login');
+
+                  // Logout user supaya mereka harus login manual
+                  // NOTE: Kita TIDAK gunakan authStateProvider.logout() karena itu akan
+                  // clear pending motor data dari SharedPreferences
+                  try {
+                    debugPrint('🔐 [EMAIL_VERIFY] User clicked back to login, logging out...');
+                    await FirebaseAuth.instance.signOut();
+                    debugPrint('✅ [EMAIL_VERIFY] User logged out before returning to login');
+
+                    // Force invalidate authStateProvider to ensure router knows user is logged out
+                    if (mounted) {
+                      ref.invalidate(authStateProvider);
+                      debugPrint('♻️ [EMAIL_VERIFY] AuthStateProvider invalidated');
+                    }
+
+                    // Wait for auth state to propagate to prevent race condition
+                    await Future.delayed(const Duration(milliseconds: 500));
+                    debugPrint('⏱️ [EMAIL_VERIFY] Auth state propagation delay complete');
+                  } catch (e) {
+                    debugPrint('❌ [EMAIL_VERIFY] Error logging out: $e');
+                  }
+
+                  if (mounted) {
+                    debugPrint('🔄 [EMAIL_VERIFY] Navigating to login screen...');
+                    navigator.go('/login');
+                  }
                 },
                 child: Text(
                   'Kembali ke Login',
