@@ -18,6 +18,7 @@ class MotorDetailsScreen extends ConsumerStatefulWidget {
 class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
   String? editMotorId;
   String? from;
+  bool _isSaving = false;
 
   @override
   void didChangeDependencies() {
@@ -86,14 +87,26 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                   ),
                   const SizedBox(width: AppSpacing.m),
                   ElevatedButton(
-                    onPressed: () async {
+                    onPressed: _isSaving ? null : () async {
+                      if (_isSaving) return;
+
+                      setState(() {
+                        _isSaving = true;
+                      });
+
                       final savedModel = motorDetails.model!;
                       final savedType = motorDetails.type!;
                       final savedOdometer = motorDetails.odometer!;
                       final savedFrom = from;
                       final savedEditMotorId = editMotorId;
 
-                      // Close confirmation dialog
+                      if (!mounted) {
+                        setState(() {
+                          _isSaving = false;
+                        });
+                        return;
+                      }
+
                       Navigator.of(context).pop();
 
                       // Show loading dialog
@@ -157,11 +170,19 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                           await Future.delayed(const Duration(milliseconds: 100));
 
                           // Clear form and go back
-                          if (!context.mounted) return;
+                          if (!mounted) return;
                           ref.read(motorDetailsProvider.notifier).clearAll();
-                          context.pop();
+
+                          if (mounted) {
+                            setState(() {
+                              _isSaving = false;
+                            });
+                          }
+
+                          if (context.mounted) {
+                            context.pop();
+                          }
                         } else {
-                          // Registration flow
                           await ref.read(motorListProvider.notifier).addMotor(
                                 savedModel,
                                 savedType,
@@ -174,28 +195,35 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                 },
                               );
 
-                          // Close loading dialog
                           if (!context.mounted) return;
                           Navigator.of(context, rootNavigator: true).pop();
 
-                          // Wait a bit for dialog to fully close
                           await Future.delayed(const Duration(milliseconds: 100));
 
-                          // Clear form
-                          if (!context.mounted) return;
+                          if (!mounted) return;
                           ref.read(motorDetailsProvider.notifier).clearAll();
 
-                          // Navigate to beranda
-                          if (!context.mounted) return;
-                          context.go('/beranda');
+                          if (mounted) {
+                            setState(() {
+                              _isSaving = false;
+                            });
+                          }
+
+                          if (context.mounted) {
+                            context.go('/beranda');
+                          }
                         }
                       } catch (e) {
-                        // Close loading dialog
                         if (context.mounted) {
                           Navigator.of(context, rootNavigator: true).pop();
                         }
 
-                        // Show error snackbar
+                        if (mounted) {
+                          setState(() {
+                            _isSaving = false;
+                          });
+                        }
+
                         if (!context.mounted) return;
 
                         ScaffoldMessenger.of(context).showSnackBar(
