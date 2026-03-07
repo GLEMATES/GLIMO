@@ -7,6 +7,7 @@ import '../../themes/app_colors.dart';
 import '../../themes/app_spacing.dart';
 import '../../themes/app_typography.dart';
 import '../../widgets/action_button.dart';
+import '../../../core/utils/logger.dart';
 
 class MotorDetailsScreen extends ConsumerStatefulWidget {
   const MotorDetailsScreen({super.key});
@@ -183,6 +184,11 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                             context.pop();
                           }
                         } else {
+                          Logger.log('Starting motor registration...', tag: 'MOTOR');
+
+                          final navigator = Navigator.of(context, rootNavigator: true);
+                          final router = GoRouter.of(context);
+
                           await ref.read(motorListProvider.notifier).addMotor(
                                 savedModel,
                                 savedType,
@@ -195,23 +201,31 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                 },
                               );
 
-                          if (!context.mounted) return;
-                          Navigator.of(context, rootNavigator: true).pop();
-
-                          await Future.delayed(const Duration(milliseconds: 100));
+                          Logger.log('Motor saved, closing loading dialog...', tag: 'MOTOR');
 
                           if (!mounted) return;
+
+                          try {
+                            navigator.pop();
+                            Logger.log('Loading dialog closed', tag: 'MOTOR');
+                          } catch (e) {
+                            Logger.error('Failed to close dialog', tag: 'MOTOR', error: e);
+                          }
+
+                          await Future.delayed(const Duration(milliseconds: 300));
+
+                          if (!mounted) return;
+
+                          Logger.log('Clearing form...', tag: 'MOTOR');
                           ref.read(motorDetailsProvider.notifier).clearAll();
 
-                          if (mounted) {
-                            setState(() {
-                              _isSaving = false;
-                            });
-                          }
+                          setState(() {
+                            _isSaving = false;
+                          });
 
-                          if (context.mounted) {
-                            context.go('/beranda');
-                          }
+                          Logger.log('Navigating to /beranda...', tag: 'MOTOR');
+                          router.go('/beranda');
+                          Logger.success('Navigation to /beranda completed', tag: 'MOTOR');
                         }
                       } catch (e) {
                         if (context.mounted) {

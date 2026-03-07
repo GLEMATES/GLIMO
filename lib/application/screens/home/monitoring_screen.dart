@@ -46,6 +46,8 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
   Future<void> _fixReferenceDateIfNeeded() async {
     await Future.delayed(const Duration(seconds: 2));
 
+    if (!mounted) return;
+
     final motors = ref.read(motorListProvider);
     final activeMotor = motors.where((m) => m.isActive).firstOrNull ?? motors.firstOrNull;
     if (activeMotor == null) return;
