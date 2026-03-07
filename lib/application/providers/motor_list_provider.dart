@@ -157,7 +157,7 @@ class MotorListNotifier extends Notifier<List<Motor>> {
     String model,
     String type,
     String odometer,
-    DateTime tanggalBeli, {
+    DateTime referenceDate, {
     DateTime? tanggalServisTerakhir,
     int? odometerServisTerakhir,
   }) async {
@@ -168,7 +168,6 @@ class MotorListNotifier extends Notifier<List<Motor>> {
     final now = DateTime.now();
     final firestore = FirebaseFirestore.instance;
 
-    // Generate ID untuk motor baru
     final motorDoc = firestore
         .collection('users')
         .doc(user.uid)
@@ -180,28 +179,26 @@ class MotorListNotifier extends Notifier<List<Motor>> {
       model: model,
       type: type,
       odometer: odometer,
-      odometerAwal: "0", // Set ke 0 untuk asumsi motor beli baru
+      odometerAwal: odometer,
       tanggalDitambah: now,
-      tanggalBeli: tanggalBeli,
+      tanggalBeli: referenceDate,
       tanggalServisTerakhir: tanggalServisTerakhir,
       odometerServisTerakhir: odometerServisTerakhir,
       isActive: isFirstMotor,
     );
 
-    // ✅ OPTIMISTIC UI: Update state IMMEDIATELY (tidak tunggu Firestore)
     state = [...state, newMotor];
     await _saveToPreferences();
 
-    // ✅ Save ke Firestore dengan proper error handling
     try {
       debugPrint('🔄 Saving motor to Firestore: ${motorDoc.id}');
       await motorDoc.set({
         'model': model,
         'type': type,
         'odometer': odometer,
-        'odometerAwal': "0",
+        'odometerAwal': odometer,
         'tanggalDitambah': Timestamp.fromDate(now),
-        'tanggalBeli': Timestamp.fromDate(tanggalBeli),
+        'tanggalBeli': Timestamp.fromDate(referenceDate),
         'tanggalServisTerakhir': tanggalServisTerakhir != null ? Timestamp.fromDate(tanggalServisTerakhir) : null,
         'odometerServisTerakhir': odometerServisTerakhir,
         'isActive': isFirstMotor,
@@ -214,10 +211,8 @@ class MotorListNotifier extends Notifier<List<Motor>> {
       debugPrint('✅ Motor saved to Firestore successfully!');
     } catch (e) {
       debugPrint('❌ Failed to save motor to Firestore: $e');
-      // Rollback local state if Firestore save fails
       state = state.where((motor) => motor.id != motorDoc.id).toList();
       await _saveToPreferences();
-      // Re-throw error so UI can handle it
       rethrow;
     }
   }

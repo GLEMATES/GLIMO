@@ -134,7 +134,7 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                       );
 
                       try {
-                        final estimatedPurchaseDate = DateTime.now();
+                        final referenceDate = DateTime.now();
 
                         if (savedFrom == 'motor-saya') {
                           if (savedEditMotorId != null) {
@@ -154,7 +154,7 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                   savedModel,
                                   savedType,
                                   savedOdometer,
-                                  estimatedPurchaseDate,
+                                  referenceDate,
                                 ).timeout(
                                   const Duration(seconds: 10),
                                   onTimeout: () {
@@ -193,7 +193,7 @@ class _MotorDetailsScreenState extends ConsumerState<MotorDetailsScreen> {
                                 savedModel,
                                 savedType,
                                 savedOdometer,
-                                estimatedPurchaseDate,
+                                referenceDate,
                               ).timeout(
                                 const Duration(seconds: 10),
                                 onTimeout: () {

@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:go_router/go_router.dart';
 import '../../providers/motor_list_provider.dart';
 import '../../providers/servis_schedule_provider.dart';
@@ -39,119 +38,9 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
       }
 
       ref.invalidate(servisScheduleProvider);
-      _fixReferenceDateIfNeeded();
     });
   }
 
-  Future<void> _fixReferenceDateIfNeeded() async {
-    await Future.delayed(const Duration(seconds: 2));
-
-    if (!mounted) return;
-
-    final motors = ref.read(motorListProvider);
-    final activeMotor = motors.where((m) => m.isActive).firstOrNull ?? motors.firstOrNull;
-    if (activeMotor == null) return;
-
-    final currentOdometer = int.tryParse(activeMotor.odometer) ?? 0;
-    if (currentOdometer < 1000) return;
-
-    final now = DateTime.now();
-    final monthsFromRef = (now.year - activeMotor.tanggalBeli.year) * 12 +
-        (now.month - activeMotor.tanggalBeli.month);
-
-    final expectedMonths = (currentOdometer / 1000).round();
-
-    if (monthsFromRef < expectedMonths - 3) {
-      Logger.warn('Reference date seems wrong! Recalculating...', tag: 'FIX');
-      Logger.log('Current: $monthsFromRef months, Expected: ~$expectedMonths months', tag: 'FIX');
-
-      try {
-        final firestore = FirebaseFirestore.instance;
-        final snapshot = await firestore.collection('motors').get();
-
-        Map<String, dynamic>? serviceSchedule;
-        final motorModel = activeMotor.model.toLowerCase();
-
-        for (var doc in snapshot.docs) {
-          final data = doc.data();
-          final category = (data['category'] as String?)?.toLowerCase() ?? '';
-          final motorName = (data['motor_name'] as String?)?.toLowerCase() ?? '';
-
-          if (category == motorModel ||
-              motorName.contains(motorModel) ||
-              motorModel.contains(motorName.split(',')[0].trim())) {
-            serviceSchedule = data;
-            break;
-          }
-        }
-
-        if (serviceSchedule != null) {
-          final newRefDate = _estimateReferenceDateFromOdometer(currentOdometer, serviceSchedule);
-          final newMonths = (now.year - newRefDate.year) * 12 + (now.month - newRefDate.month);
-
-          Logger.log('New reference date: $newRefDate', tag: 'FIX');
-          Logger.log('New months from reference: $newMonths', tag: 'FIX');
-
-          await ref.read(motorListProvider.notifier).updateTanggalBeli(activeMotor.id, newRefDate);
-          ref.invalidate(servisScheduleProvider);
-
-          Logger.success('Reference date updated!', tag: 'FIX');
-        }
-      } catch (e) {
-        Logger.error('Failed to fix reference date', tag: 'FIX', error: e);
-      }
-    }
-  }
-
-  DateTime _estimateReferenceDateFromOdometer(int currentOdometer, Map<String, dynamic> serviceSchedule) {
-    final services = (serviceSchedule['services'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    if (services.isEmpty) return DateTime.now();
-
-    final List<MapEntry<int, int>> milestones = [];
-    for (var service in services) {
-      final schedule = service['schedule'] as Map<String, dynamic>?;
-      if (schedule != null) {
-        schedule.forEach((key, value) {
-          if (value is Map<String, dynamic>) {
-            final km = value['km'] as int?;
-            final months = value['months'] as int?;
-            if (km != null && months != null) {
-              milestones.add(MapEntry(km, months));
-            }
-          }
-        });
-      }
-    }
-
-    milestones.sort((a, b) => a.key.compareTo(b.key));
-    if (milestones.isEmpty) return DateTime.now();
-
-    MapEntry<int, int>? previous;
-    MapEntry<int, int>? next;
-
-    for (var m in milestones) {
-      if (currentOdometer >= m.key) {
-        previous = m;
-      } else {
-        next = m;
-        break;
-      }
-    }
-
-    double estimatedMonths;
-    if (previous == null) {
-      estimatedMonths = 0;
-    } else if (next == null) {
-      estimatedMonths = previous.value.toDouble();
-    } else {
-      final kmRange = next.key - previous.key;
-      final monthsRange = next.value - previous.value;
-      final progress = kmRange > 0 ? (currentOdometer - previous.key) / kmRange : 0.0;
-      estimatedMonths = previous.value + (progress * monthsRange);
-    }
-
-    return DateTime.now().subtract(Duration(days: (estimatedMonths * 30).round()));
-  }
 
   void _showConfirmationDialog(
     BuildContext context,
@@ -393,8 +282,8 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
       );
     }
 
-    // Fetch servis schedule berdasarkan motor model
-    final servisSchedule = ref.watch(servisScheduleProvider(activeMotor.model));
+    // Fetch servis schedule berdasarkan motor type (nama spesifik motor)
+    final servisSchedule = ref.watch(servisScheduleProvider(activeMotor.type));
 
     return Scaffold(
       backgroundColor: AppColors.neutral0,
