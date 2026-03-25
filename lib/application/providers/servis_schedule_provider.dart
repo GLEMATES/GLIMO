@@ -85,14 +85,30 @@ class ServiceItem {
     return entries;
   }
 
-  /// Get list of KM milestones
   List<int> getKmMilestones() {
     return schedule.values.map((e) => e.km).toList()..sort();
   }
 
-  /// Get list of month milestones
   List<int> getMonthMilestones() {
     return schedule.values.map((e) => e.months).toList()..sort();
+  }
+
+  int? detectServiceInterval() {
+    final milestones = getKmMilestones();
+    if (milestones.length < 3) return null;
+
+    final intervals = <int, int>{};
+    for (int i = 1; i < milestones.length; i++) {
+      final interval = milestones[i] - milestones[i - 1];
+      intervals[interval] = (intervals[interval] ?? 0) + 1;
+    }
+
+    if (intervals.isEmpty) return null;
+
+    final sortedIntervals = intervals.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+
+    return sortedIntervals.first.key;
   }
 
   /// Check if this service has any "Ganti" action
@@ -201,6 +217,7 @@ class ServiceProgressCalculator {
 
     ScheduleEntry? nextServiceEntry;
     ScheduleEntry? previousServiceEntry;
+    int? detectedInterval = serviceItem.detectServiceInterval();
 
     if (lastServiceOdometer != null && lastServiceOdometer > 0) {
       bool foundNext = false;
@@ -215,7 +232,25 @@ class ServiceProgressCalculator {
         previousServiceEntry = entry.value;
       }
 
-      if (nextServiceEntry == null) {
+      if (nextServiceEntry == null && detectedInterval != null) {
+        final lastScheduleEntry = sortedSchedule.last.value;
+        int calculatedNextKm = lastScheduleEntry.km;
+
+        while (calculatedNextKm <= lastServiceOdometer) {
+          calculatedNextKm += detectedInterval;
+        }
+
+        nextServiceEntry = ScheduleEntry(
+          action: lastScheduleEntry.action,
+          km: calculatedNextKm,
+          months: lastScheduleEntry.months,
+        );
+        previousServiceEntry = ScheduleEntry(
+          action: lastScheduleEntry.action,
+          km: calculatedNextKm - detectedInterval,
+          months: lastScheduleEntry.months,
+        );
+      } else if (nextServiceEntry == null) {
         nextServiceEntry = sortedSchedule.last.value;
         previousServiceEntry = sortedSchedule.length > 1
             ? sortedSchedule[sortedSchedule.length - 2].value
@@ -230,7 +265,25 @@ class ServiceProgressCalculator {
         previousServiceEntry = entry.value;
       }
 
-      if (nextServiceEntry == null) {
+      if (nextServiceEntry == null && detectedInterval != null) {
+        final lastScheduleEntry = sortedSchedule.last.value;
+        int calculatedNextKm = lastScheduleEntry.km;
+
+        while (calculatedNextKm <= currentOdometer) {
+          calculatedNextKm += detectedInterval;
+        }
+
+        nextServiceEntry = ScheduleEntry(
+          action: lastScheduleEntry.action,
+          km: calculatedNextKm,
+          months: lastScheduleEntry.months,
+        );
+        previousServiceEntry = ScheduleEntry(
+          action: lastScheduleEntry.action,
+          km: calculatedNextKm - detectedInterval,
+          months: lastScheduleEntry.months,
+        );
+      } else if (nextServiceEntry == null) {
         nextServiceEntry = sortedSchedule.last.value;
         previousServiceEntry = sortedSchedule.length > 1
             ? sortedSchedule[sortedSchedule.length - 2].value
