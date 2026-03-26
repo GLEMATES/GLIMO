@@ -31,13 +31,11 @@ class ActionButton extends StatelessWidget {
               ),
               child: Text(
                 text,
-                style: AppTypography.bodyLarge.copyWith(
+                style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.neutral0,
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
               ),
             )
           : OutlinedButton(
@@ -50,13 +48,11 @@ class ActionButton extends StatelessWidget {
               ),
               child: Text(
                 text,
-                style: AppTypography.bodyLarge.copyWith(
+                style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.normalHover,
                   fontWeight: FontWeight.w600,
                 ),
                 textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                maxLines: 1,
               ),
             ),
     );
