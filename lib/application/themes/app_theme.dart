@@ -45,7 +45,9 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.m),
           ),
-          textStyle: AppTypography.labelLarge,
+          textStyle: AppTypography.bodyMedium.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
           elevation: 0,
         ).copyWith(
           overlayColor: WidgetStateProperty.resolveWith<Color?>(
@@ -73,7 +75,9 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.m),
           ),
-          textStyle: AppTypography.labelLarge,
+          textStyle: AppTypography.bodyMedium.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ).copyWith(
           overlayColor: WidgetStateProperty.resolveWith<Color?>(
             (Set<WidgetState> states) {
@@ -101,7 +105,9 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppRadius.m),
           ),
-          textStyle: AppTypography.labelLarge,
+          textStyle: AppTypography.bodyMedium.copyWith(
+            fontWeight: FontWeight.w600,
+          ),
         ).copyWith(
           side: WidgetStateProperty.resolveWith<BorderSide?>(
             (Set<WidgetState> states) {
