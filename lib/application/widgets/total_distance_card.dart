@@ -163,13 +163,8 @@ class _TotalDistanceCardState extends ConsumerState<TotalDistanceCard> {
     if (activeMotor != null) {
       try {
         final currentOdometer = int.parse(activeMotor.odometer);
-        final initialOdometer = int.parse(activeMotor.odometerAwal);
-        final distance = currentOdometer - initialOdometer;
+        totalDistance = currentOdometer.toString();
 
-        // Format distance with comma separator
-        totalDistance = distance.toString();
-
-        // Format dates
         startDate = _formatDate(activeMotor.tanggalDitambah);
         endDate = _formatDate(DateTime.now());
       } catch (e) {
