@@ -138,3 +138,7 @@ lib/check_motor_data.dart
 
 # Node modules
 node_modules/
+
+# Experimental files (for research/development only)
+lib/experimental/
+test/experimental/
