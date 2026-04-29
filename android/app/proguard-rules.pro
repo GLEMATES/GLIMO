@@ -18,6 +18,9 @@
 # Firebase
 -keep class com.google.firebase.** { *; }
 -keep class com.google.android.gms.** { *; }
+-dontwarn com.google.android.gms.**
+-keep class com.google.android.gms.common.** { *; }
+-keep class com.google.android.gms.common.wrappers.** { *; }
 
 # In-app purchase
 -keep class com.android.billingclient.api.** { *; }

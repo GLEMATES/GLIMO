@@ -20,6 +20,7 @@ class MonitoringScreen extends ConsumerStatefulWidget {
 class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
   bool _isKetentuanExpanded = false;
   bool _isLoadingMotors = true;
+  bool _hasCheckedMotors = false;
 
   @override
   void initState() {
@@ -28,12 +29,12 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       Logger.log('Loading motors...', tag: 'MONITORING');
 
-      // Wait for motors to load before rendering
       await ref.read(motorListProvider.notifier).loadMotors();
 
       if (mounted) {
         setState(() {
           _isLoadingMotors = false;
+          _hasCheckedMotors = true;
         });
       }
 
@@ -228,12 +229,11 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
       );
     }
 
-    // PENTING: Gunakan watch() agar reactive!
-    // ref tersedia dari ConsumerState
     final motors = ref.watch(motorListProvider);
     final Motor? activeMotor = motors.where((m) => m.isActive).firstOrNull ?? motors.firstOrNull;
 
     debugPrint('🖥️ [MONITORING] Total motors: ${motors.length}');
+    debugPrint('🖥️ [MONITORING] Has checked motors: $_hasCheckedMotors');
 
     if (activeMotor == null) {
       debugPrint('❌ [MONITORING] No active motor found!');
@@ -248,12 +248,14 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
     }
 
     if (activeMotor == null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (context.mounted) {
-          Logger.warn('No motor found, redirecting to motor-details', tag: 'MONITORING');
-          context.go('/motor-details');
-        }
-      });
+      if (_hasCheckedMotors) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (context.mounted) {
+            Logger.warn('No motor found, redirecting to motor-details', tag: 'MONITORING');
+            context.go('/motor-details');
+          }
+        });
+      }
 
       return Scaffold(
         backgroundColor: AppColors.neutral0,
@@ -271,7 +273,7 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
               CircularProgressIndicator(color: AppColors.normalHover),
               const SizedBox(height: AppSpacing.l),
               Text(
-                'Belum ada motor, mengalihkan...',
+                _hasCheckedMotors ? 'Belum ada motor, mengalihkan...' : 'Memuat data motor...',
                 style: AppTypography.bodyMedium.copyWith(
                   color: AppColors.neutral700,
                 ),
@@ -282,7 +284,6 @@ class _MonitoringScreenState extends ConsumerState<MonitoringScreen> {
       );
     }
 
-    // Fetch servis schedule berdasarkan motor type (nama spesifik motor)
     final servisSchedule = ref.watch(servisScheduleProvider(activeMotor.type));
 
     return Scaffold(

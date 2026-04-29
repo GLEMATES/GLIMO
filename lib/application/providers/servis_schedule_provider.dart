@@ -301,9 +301,7 @@ class ServiceProgressCalculator {
 
     final previousMonths = previousServiceEntry?.months ?? 0;
     final nextMonths = nextServiceEntry.months;
-    final monthsRange = lastServiceDate != null
-        ? nextMonths
-        : nextMonths - previousMonths;
+    final monthsRange = nextMonths - previousMonths;
     final timeProgress = monthsRange > 0
         ? (totalMonthsFromReference / monthsRange).clamp(0.0, 1.0)
         : 0.0;

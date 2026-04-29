@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../utils/service_rules_dss.dart';
 import '../utils/navigation_helper.dart';
 import '../../domain/models/notification_model.dart';
@@ -27,11 +28,11 @@ class NotificationService {
   Future<void> initialize() async {
     if (_initialized) return;
 
-    // Android initialization settings
+    await _requestAndroidNotificationPermission();
+
     const AndroidInitializationSettings androidSettings =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
-    // iOS initialization settings
     const DarwinInitializationSettings iosSettings =
         DarwinInitializationSettings(
       requestAlertPermission: true,
@@ -49,13 +50,22 @@ class NotificationService {
       onDidReceiveNotificationResponse: _onNotificationTapped,
     );
 
-    // Request iOS permissions explicitly
     await _requestIOSPermissions();
 
-    // Create notification channels for Android
     await _createNotificationChannels();
 
     _initialized = true;
+  }
+
+  Future<void> _requestAndroidNotificationPermission() async {
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      final status = await Permission.notification.request();
+      if (status.isGranted) {
+        debugPrint('✅ Android notification permission granted');
+      } else {
+        debugPrint('❌ Android notification permission denied');
+      }
+    }
   }
 
   /// Request iOS notification permissions

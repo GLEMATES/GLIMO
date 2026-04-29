@@ -100,4 +100,19 @@ tasks.whenTaskAdded {
 
 dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
+    implementation("com.google.android.gms:play-services-location:21.0.1")
+    implementation("com.google.android.gms:play-services-auth:20.7.0")
+    implementation("com.google.android.gms:play-services-base:18.2.0")
+    implementation("com.google.android.gms:play-services-basement:18.2.0")
+    implementation("com.google.android.gms:play-services-maps:18.1.0")
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("com.google.android.gms:play-services-location:21.0.1")
+        force("com.google.android.gms:play-services-auth:20.7.0")
+        force("com.google.android.gms:play-services-base:18.2.0")
+        force("com.google.android.gms:play-services-basement:18.2.0")
+        force("com.google.android.gms:play-services-maps:18.1.0")
+    }
 }

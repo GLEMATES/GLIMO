@@ -13,6 +13,7 @@ import 'trip_history_provider.dart';
 import 'motor_list_provider.dart';
 import '../utils/geocoding_service.dart';
 import 'debug_panel_provider.dart';
+import '../models/gps_quality_metrics.dart';
 
 /// Tracking status enum
 enum TrackingStatus {
@@ -27,7 +28,10 @@ class GPSTrackingState {
   final List<Position> positions;
   final DateTime? startTime;
   final DateTime? endTime;
-  final double totalDistance; // in kilometers
+  final double totalDistance;
+  final List<GPSQualityMetrics> qualityMetrics;
+  final List<SegmentData> segments;
+  final String? sessionId;
 
   GPSTrackingState({
     required this.status,
@@ -35,6 +39,9 @@ class GPSTrackingState {
     this.startTime,
     this.endTime,
     required this.totalDistance,
+    this.qualityMetrics = const [],
+    this.segments = const [],
+    this.sessionId,
   });
 
   GPSTrackingState copyWith({
@@ -43,6 +50,9 @@ class GPSTrackingState {
     DateTime? startTime,
     DateTime? endTime,
     double? totalDistance,
+    List<GPSQualityMetrics>? qualityMetrics,
+    List<SegmentData>? segments,
+    String? sessionId,
   }) {
     return GPSTrackingState(
       status: status ?? this.status,
@@ -50,6 +60,9 @@ class GPSTrackingState {
       startTime: startTime ?? this.startTime,
       endTime: endTime ?? this.endTime,
       totalDistance: totalDistance ?? this.totalDistance,
+      qualityMetrics: qualityMetrics ?? this.qualityMetrics,
+      segments: segments ?? this.segments,
+      sessionId: sessionId ?? this.sessionId,
     );
   }
 
@@ -456,14 +469,24 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
     );
 
     final now = DateTime.now();
+    final sessionId = '${user?.uid ?? 'unknown'}_${now.millisecondsSinceEpoch}';
     debugPrint('🚀 [GPS TRACKING] Starting new tracking session at $now');
+    debugPrint('   Session ID: $sessionId');
 
-    // Update state with fresh data
+    final initialQuality = GPSQualityMetrics(
+      timestamp: initialPosition.timestamp,
+      accuracy: initialPosition.accuracy,
+      quality: GPSQualityMetrics.getQualityFromAccuracy(initialPosition.accuracy),
+    );
+
     state = GPSTrackingState(
       status: TrackingStatus.tracking,
       positions: [initialPosition],
       startTime: now,
       totalDistance: 0.0,
+      qualityMetrics: [initialQuality],
+      segments: [],
+      sessionId: sessionId,
     );
 
     // Start listening to position stream
@@ -514,9 +537,10 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
     if (state.status != TrackingStatus.tracking) return;
 
     final positions = List<Position>.from(state.positions);
+    final qualityMetrics = List<GPSQualityMetrics>.from(state.qualityMetrics);
+    final segments = List<SegmentData>.from(state.segments);
     final lastPosition = positions.last;
 
-    // Calculate distance from last position
     double distance = Geolocator.distanceBetween(
       lastPosition.latitude,
       lastPosition.longitude,
@@ -524,16 +548,45 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
       position.longitude,
     );
 
-    // Convert to kilometers
     double distanceInKm = distance / 1000;
 
-    // Add position
+    final isPotentialJump = GPSQualityMetrics.detectJump(position, lastPosition);
+    final timeDiff = position.timestamp.difference(lastPosition.timestamp).inSeconds;
+    final speedKmh = timeDiff > 0 ? (distance / timeDiff) * 3.6 : 0.0;
+
+    final quality = GPSQualityMetrics(
+      timestamp: position.timestamp,
+      accuracy: position.accuracy,
+      quality: GPSQualityMetrics.getQualityFromAccuracy(position.accuracy),
+      isPotentialJump: isPotentialJump,
+      jumpDistance: isPotentialJump ? distance : null,
+      speedKmh: speedKmh,
+    );
+    qualityMetrics.add(quality);
+
+    final segment = SegmentData(
+      segmentIndex: segments.length,
+      startTime: lastPosition.timestamp,
+      endTime: position.timestamp,
+      startLat: lastPosition.latitude,
+      startLng: lastPosition.longitude,
+      endLat: position.latitude,
+      endLng: position.longitude,
+      distanceHaversine: distanceInKm,
+      startAccuracy: lastPosition.accuracy,
+      endAccuracy: position.accuracy,
+      durationSeconds: timeDiff.toDouble(),
+      speedKmh: speedKmh,
+    );
+    segments.add(segment);
+
     positions.add(position);
 
-    // Update state
     state = state.copyWith(
       positions: positions,
       totalDistance: state.totalDistance + distanceInKm,
+      qualityMetrics: qualityMetrics,
+      segments: segments,
     );
   }
 
@@ -750,6 +803,14 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
 
     String autoStopStatus = _autoStopTimer != null ? '⏰ Active (2m)' : '⏸️ Standby';
 
+    final currentAccuracy = state.qualityMetrics.isNotEmpty
+        ? state.qualityMetrics.last.accuracy.toStringAsFixed(1)
+        : '-';
+    final currentQuality = state.qualityMetrics.isNotEmpty
+        ? state.qualityMetrics.last.quality.toString().split('.').last
+        : '-';
+    final jumpCount = state.qualityMetrics.where((m) => m.isPotentialJump).length;
+
     ref.read(debugPanelProvider.notifier).updateCurrentStatus({
       'mode': trackingMode.mode == TrackingMode.automatic ? '⚙️ OTOMATIS' : '🖐️ MANUAL',
       'tracking': statusText,
@@ -761,6 +822,10 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
         ? state.getFormattedDuration()
         : '-',
       'autoStopTimer': autoStopStatus,
+      'accuracy': '$currentAccuracy m',
+      'quality': currentQuality,
+      'jumps': '$jumpCount',
+      'points': '${state.positions.length}',
     });
   }
 
@@ -787,6 +852,58 @@ class GPSTrackingNotifier extends Notifier<GPSTrackingState> {
         'timestamp': p.timestamp.millisecondsSinceEpoch,
       }).toList(),
     };
+  }
+
+  TrackingSessionMetrics? getSessionMetrics() {
+    if (state.positions.isEmpty || state.sessionId == null) return null;
+
+    final jumpCount = state.qualityMetrics.where((m) => m.isPotentialJump).length;
+
+    final avgAccuracy = state.qualityMetrics.isEmpty
+        ? 0.0
+        : state.qualityMetrics.map((m) => m.accuracy).reduce((a, b) => a + b) / state.qualityMetrics.length;
+
+    final excellentCount = state.qualityMetrics.where((m) => m.quality == GPSQuality.excellent).length;
+    final goodCount = state.qualityMetrics.where((m) => m.quality == GPSQuality.good).length;
+    final fairCount = state.qualityMetrics.where((m) => m.quality == GPSQuality.fair).length;
+    final poorCount = state.qualityMetrics.where((m) => m.quality == GPSQuality.poor).length;
+    final total = state.qualityMetrics.length;
+
+    final excellentPct = total > 0 ? (excellentCount / total) * 100 : 0.0;
+    final goodPct = total > 0 ? (goodCount / total) * 100 : 0.0;
+    final fairPct = total > 0 ? (fairCount / total) * 100 : 0.0;
+    final poorPct = total > 0 ? (poorCount / total) * 100 : 0.0;
+
+    int gapCount = 0;
+    double maxGapDuration = 0.0;
+
+    for (int i = 1; i < state.positions.length; i++) {
+      final timeDiff = state.positions[i].timestamp.difference(state.positions[i - 1].timestamp).inSeconds;
+      if (timeDiff > 30) {
+        gapCount++;
+        if (timeDiff > maxGapDuration) {
+          maxGapDuration = timeDiff.toDouble();
+        }
+      }
+    }
+
+    return TrackingSessionMetrics(
+      sessionId: state.sessionId!,
+      startTime: state.startTime!,
+      endTime: state.endTime,
+      qualityMetrics: state.qualityMetrics,
+      segments: state.segments,
+      totalDistanceHaversine: state.totalDistance,
+      totalGPSPoints: state.positions.length,
+      jumpCount: jumpCount,
+      averageAccuracy: avgAccuracy,
+      excellentQualityPercentage: excellentPct,
+      goodQualityPercentage: goodPct,
+      fairQualityPercentage: fairPct,
+      poorQualityPercentage: poorPct,
+      gapCount: gapCount,
+      maxGapDuration: maxGapDuration,
+    );
   }
 }
 

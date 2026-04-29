@@ -1,7 +1,8 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'auth_provider.dart';
-import '../../domain/entities/user_entity.dart';
+import 'package:glimo/application/providers/auth_provider.dart';
+import 'package:glimo/application/providers/auth_state.dart';
+import 'package:glimo/domain/entities/user_entity.dart';
 
 class UserProfile {
   final String name;
